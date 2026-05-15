@@ -22,6 +22,8 @@ class_name Player
 @export var invincibility_time: float = 1.0
 @export var knockback_force: float = 250.0
 
+const BASE_SCALE := Vector2(0.33, 0.33)
+
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var jumps_remaining: int = 0
 var coyote_timer: float = 0.0
@@ -40,7 +42,7 @@ signal score_changed(new_score: int)
 
 var score: int = 0
 
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: AnimatedSprite2D = $Sprite
 @onready var attack_area: Area2D = $AttackArea
 @onready var attack_shape: CollisionShape2D = $AttackArea/CollisionShape2D
 @onready var hurtbox: Area2D = $Hurtbox
@@ -49,6 +51,7 @@ func _ready() -> void:
 	current_health = max_health
 	jumps_remaining = max_jumps
 	attack_shape.disabled = true
+	add_to_group("player")
 	attack_area.body_entered.connect(_on_attack_hit)
 	hurtbox.area_entered.connect(_on_hurtbox_area_entered)
 	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
@@ -76,6 +79,7 @@ func _physics_process(delta: float) -> void:
 		jumps_remaining = max_jumps
 		coyote_timer = coyote_time
 
+	_update_animation()
 	_update_sprite()
 
 func _update_timers(delta: float) -> void:
@@ -93,18 +97,16 @@ func _update_timers(delta: float) -> void:
 			is_invincible = false
 			sprite.modulate.a = 1.0
 		else:
-			# Flash effect
 			sprite.modulate.a = 0.3 if int(invincibility_timer * 20) % 2 == 0 else 1.0
 
 func _handle_gravity(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += gravity * delta
-		velocity.y = min(velocity.y, 600)  # Terminal velocity
+		velocity.y = min(velocity.y, 600)
 
 func _handle_jump_input() -> void:
 	if Input.is_action_just_pressed("jump"):
 		jump_buffer_timer = jump_buffer_time
-	# Variable jump height: cut jump short if button released early
 	if Input.is_action_just_released("jump") and velocity.y < 0:
 		velocity.y *= jump_cut_multiplier
 
@@ -138,14 +140,13 @@ func _start_attack() -> void:
 	is_attacking = true
 	attack_timer = attack_duration
 	attack_shape.disabled = false
-	# Position attack hitbox based on facing direction
 	attack_area.position.x = 18 if facing_right else -18
-	sprite.color = Color(1.0, 0.9, 0.4)
+	sprite.modulate = Color(1.0, 0.9, 0.4, sprite.modulate.a)
 
 func _end_attack() -> void:
 	is_attacking = false
 	attack_shape.disabled = true
-	sprite.color = Color(0.3, 0.7, 1.0)
+	sprite.modulate = Color(1, 1, 1, sprite.modulate.a)
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
@@ -153,7 +154,8 @@ func _on_attack_hit(body: Node) -> void:
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
-		take_damage(1, area.global_position)
+		var dmg := area.get_damage() if area.has_method("get_damage") else 1
+		take_damage(dmg, area.global_position)
 	elif area.is_in_group("collectible"):
 		_collect(area)
 
@@ -175,7 +177,6 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	invincibility_timer = invincibility_time
 	emit_signal("health_changed", current_health, max_health)
 
-	# Knockback
 	var knockback_dir = (global_position - source_pos).normalized()
 	velocity.x = knockback_dir.x * knockback_force
 	velocity.y = -200
@@ -185,23 +186,30 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 func _die() -> void:
 	is_dead = true
-	sprite.color = Color(0.5, 0.5, 0.5)
+	sprite.modulate = Color(0.5, 0.5, 0.5)
 	emit_signal("died")
 
 func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)
 	emit_signal("health_changed", current_health, max_health)
 
+func _update_animation() -> void:
+	sprite.flip_h = not facing_right
+	if is_on_floor() and abs(velocity.x) > 10.0:
+		if sprite.animation != &"walk":
+			sprite.play(&"walk")
+	else:
+		if sprite.animation != &"idle":
+			sprite.play(&"idle")
+
 func _update_sprite() -> void:
-	# Squash and stretch based on velocity for game feel
 	if not is_on_floor():
 		if velocity.y < 0:
-			sprite.scale = Vector2(0.9, 1.15)
+			sprite.scale = BASE_SCALE * Vector2(0.9, 1.15)
 		else:
-			sprite.scale = Vector2(1.1, 0.9)
+			sprite.scale = BASE_SCALE * Vector2(1.1, 0.9)
 	else:
-		sprite.scale = sprite.scale.lerp(Vector2.ONE, 0.2)
+		sprite.scale = sprite.scale.lerp(BASE_SCALE, 0.2)
 
 func _spawn_double_jump_effect() -> void:
-	# Quick squash for visual feedback
-	sprite.scale = Vector2(1.3, 0.7)
+	sprite.scale = BASE_SCALE * Vector2(1.3, 0.7)
