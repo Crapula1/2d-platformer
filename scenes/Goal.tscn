@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3 uid="uid://cngoalxxxxx"]
+
+[ext_resource type="Script" path="res://scripts/Goal.gd" id="1_goal"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_goal"]
+size = Vector2(20, 40)
+
+[node name="Goal" type="Area2D" groups=["goal"]]
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("1_goal")
+
+[node name="Pole" type="ColorRect" parent="."]
+offset_left = -2.0
+offset_top = -30.0
+offset_right = 2.0
+offset_bottom = 20.0
+color = Color(0.8, 0.8, 0.85, 1)
+
+[node name="Flag" type="ColorRect" parent="."]
+offset_left = 2.0
+offset_top = -28.0
+offset_right = 22.0
+offset_bottom = -10.0
+color = Color(0.3, 0.9, 0.4, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_goal")
