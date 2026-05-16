@@ -74,7 +74,7 @@ func _process(_delta: float) -> void:
 	if player == null or player.is_dead:
 		return
 
-	if player.global_position.y > 700:
+	if player.global_position.y > 820:
 		player.take_damage(99, player.global_position)
 
 func _on_health_changed(new_health: int, max_health: int) -> void:
