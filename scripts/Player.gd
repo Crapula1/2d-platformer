@@ -394,7 +394,7 @@ func _update_sprite(delta: float) -> void:
 		base.a = sprite.modulate.a
 		sprite.modulate = base
 
-	sprite.flip_h = not facing_right
+	sprite.flip_h = facing_right
 
 	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
 	if sprite.animation != anim:
