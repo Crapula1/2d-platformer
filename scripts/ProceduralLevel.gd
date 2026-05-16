@@ -4,10 +4,12 @@ const GROUND_Y: int = 400
 const PLAT_H: int = 14
 
 const RANGE_SOLDIER_SCENE := preload("res://scenes/RangeSoldier.tscn")
-const COIN_SCENE := preload("res://scenes/Coin.tscn")
-const POWERUP_SCENE := preload("res://scenes/PowerUp.tscn")
-const EXIT_DOOR_SCENE := preload("res://scenes/ExitDoor.tscn")
-const PLAYER_SCENE := preload("res://scenes/Player.tscn")
+const COIN_SCENE         := preload("res://scenes/Coin.tscn")
+const POWERUP_SCENE      := preload("res://scenes/PowerUp.tscn")
+const EXIT_DOOR_SCENE    := preload("res://scenes/ExitDoor.tscn")
+const PLAYER_SCENE       := preload("res://scenes/Player.tscn")
+const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
+const BREAK_PLATFORM_SCRIPT  := preload("res://scripts/BreakPlatform.gd")
 
 var level_width: int = 0
 var _platforms: Array = []
@@ -15,15 +17,63 @@ var _platforms: Array = []
 func _ready() -> void:
 	var depth: int = RunState.depth
 	level_width = 1200 + depth * 150
-	_spawn_background()
-	_spawn_ground_and_walls()
-	_platforms = _spawn_platforms()
+	var pal := _depth_palette(depth)
+	_spawn_background(pal)
+	_spawn_ground_and_walls(pal)
+	_platforms = _spawn_platforms(depth, pal)
 	_spawn_enemies(_platforms)
 	_spawn_collectibles(_platforms)
 	_spawn_exit(_platforms)
 	_spawn_player()
 
-func _spawn_background() -> void:
+# ---------------------------------------------------------------------------
+# Depth-based colour palette
+# ---------------------------------------------------------------------------
+func _depth_palette(depth: int) -> Dictionary:
+	if depth < 3:
+		return {
+			"bg":      Color(0.08, 0.10, 0.15),
+			"strip":   Color(0.11, 0.13, 0.19, 0.45),
+			"pillar":  Color(0.10, 0.12, 0.17),
+			"ground":  Color(0.20, 0.23, 0.28),
+			"wall":    Color(0.18, 0.20, 0.25),
+			"plat":    Color(0.28, 0.32, 0.38),
+			"move":    Color(0.24, 0.42, 0.34),
+			"brk":     Color(0.46, 0.30, 0.22),
+			"support": Color(0.22, 0.25, 0.31),
+			"corridor":Color(0.24, 0.27, 0.33),
+		}
+	elif depth < 6:
+		return {
+			"bg":      Color(0.12, 0.08, 0.07),
+			"strip":   Color(0.17, 0.10, 0.09, 0.45),
+			"pillar":  Color(0.14, 0.09, 0.08),
+			"ground":  Color(0.26, 0.18, 0.16),
+			"wall":    Color(0.22, 0.15, 0.13),
+			"plat":    Color(0.36, 0.26, 0.22),
+			"move":    Color(0.42, 0.30, 0.18),
+			"brk":     Color(0.52, 0.28, 0.18),
+			"support": Color(0.28, 0.20, 0.18),
+			"corridor":Color(0.30, 0.22, 0.19),
+		}
+	else:
+		return {
+			"bg":      Color(0.07, 0.06, 0.12),
+			"strip":   Color(0.10, 0.08, 0.16, 0.45),
+			"pillar":  Color(0.09, 0.07, 0.14),
+			"ground":  Color(0.18, 0.14, 0.28),
+			"wall":    Color(0.15, 0.12, 0.24),
+			"plat":    Color(0.24, 0.18, 0.36),
+			"move":    Color(0.20, 0.24, 0.44),
+			"brk":     Color(0.40, 0.18, 0.34),
+			"support": Color(0.18, 0.14, 0.28),
+			"corridor":Color(0.20, 0.16, 0.30),
+		}
+
+# ---------------------------------------------------------------------------
+# Background
+# ---------------------------------------------------------------------------
+func _spawn_background(pal: Dictionary) -> void:
 	var bg_root := Node2D.new()
 	bg_root.z_index = -10
 	add_child(bg_root)
@@ -33,32 +83,101 @@ func _spawn_background() -> void:
 	bg.offset_top = -400.0
 	bg.offset_right = float(level_width + 200)
 	bg.offset_bottom = float(GROUND_Y + 400)
-	bg.color = Color(0.08, 0.10, 0.15)
+	bg.color = pal["bg"]
 	bg_root.add_child(bg)
 
-	# Horizontal depth strips
-	for i in range(randi_range(4, 6)):
+	for _i in range(randi_range(4, 7)):
 		var strip := ColorRect.new()
-		var strip_y := float(randi_range(-300, GROUND_Y - 50))
+		var sy := float(randi_range(-300, GROUND_Y - 50))
 		strip.offset_left = -200.0
-		strip.offset_top = strip_y
+		strip.offset_top = sy
 		strip.offset_right = float(level_width + 200)
-		strip.offset_bottom = strip_y + float(randi_range(18, 40))
-		strip.color = Color(0.11, 0.13, 0.19, 0.45)
+		strip.offset_bottom = sy + float(randi_range(16, 42))
+		strip.color = pal["strip"]
 		bg_root.add_child(strip)
 
-	# Vertical pillars every 200px
 	var px: int = 0
 	while px < level_width:
-		var pillar := ColorRect.new()
-		pillar.offset_left = float(px)
-		pillar.offset_top = -400.0
-		pillar.offset_right = float(px + 8)
-		pillar.offset_bottom = float(GROUND_Y + 400)
-		pillar.color = Color(0.10, 0.12, 0.17)
-		bg_root.add_child(pillar)
+		var p := ColorRect.new()
+		p.offset_left = float(px)
+		p.offset_top = -400.0
+		p.offset_right = float(px + 8)
+		p.offset_bottom = float(GROUND_Y + 400)
+		p.color = pal["pillar"]
+		bg_root.add_child(p)
 		px += 200
 
+# ---------------------------------------------------------------------------
+# Ground and perimeter walls
+# ---------------------------------------------------------------------------
+func _spawn_ground_and_walls(pal: Dictionary) -> void:
+	var gc := pal["ground"]
+	var wc := pal["wall"]
+
+	var gsb := StaticBody2D.new()
+	gsb.collision_layer = 1
+	gsb.collision_mask = 0
+	add_child(gsb)
+	var gcr := ColorRect.new()
+	gcr.offset_left = 0.0
+	gcr.offset_top = float(GROUND_Y)
+	gcr.offset_right = float(level_width)
+	gcr.offset_bottom = float(GROUND_Y + 200)
+	gcr.color = gc
+	gsb.add_child(gcr)
+	var gt := ColorRect.new()
+	gt.offset_left = 0.0
+	gt.offset_top = float(GROUND_Y)
+	gt.offset_right = float(level_width)
+	gt.offset_bottom = float(GROUND_Y) + 3.0
+	gt.color = Color(gc.r + 0.06, gc.g + 0.06, gc.b + 0.06)
+	gsb.add_child(gt)
+	var gs := CollisionShape2D.new()
+	var gr := RectangleShape2D.new()
+	gr.size = Vector2(float(level_width), 200.0)
+	gs.shape = gr
+	gs.position = Vector2(float(level_width) * 0.5, float(GROUND_Y) + 100.0)
+	gsb.add_child(gs)
+
+	var lsb := StaticBody2D.new()
+	lsb.collision_layer = 1
+	lsb.collision_mask = 0
+	add_child(lsb)
+	var lcr := ColorRect.new()
+	lcr.offset_left = -24.0
+	lcr.offset_top = -400.0
+	lcr.offset_right = 0.0
+	lcr.offset_bottom = float(GROUND_Y + 200)
+	lcr.color = wc
+	lsb.add_child(lcr)
+	var ls := CollisionShape2D.new()
+	var lr := RectangleShape2D.new()
+	lr.size = Vector2(24.0, float(GROUND_Y + 600))
+	ls.shape = lr
+	ls.position = Vector2(-12.0, float(GROUND_Y) * 0.5)
+	lsb.add_child(ls)
+
+	var rsb: StaticBody2D = StaticBody2D.new()
+	rsb.collision_layer = 1
+	rsb.collision_mask = 0
+	add_child(rsb)
+	var rcr := ColorRect.new()
+	rcr.offset_left = float(level_width)
+	rcr.offset_top = -400.0
+	rcr.offset_right = float(level_width + 24)
+	rcr.offset_bottom = float(GROUND_Y + 200)
+	rcr.color = wc
+	rsb.add_child(rcr)
+	var rs := CollisionShape2D.new()
+	var rr := RectangleShape2D.new()
+	rr.size = Vector2(24.0, float(GROUND_Y + 600))
+	rs.shape = rr
+	rs.position = Vector2(float(level_width + 12), float(GROUND_Y) * 0.5)
+	rsb.add_child(rs)
+
+# ---------------------------------------------------------------------------
+# Platform helpers
+# ---------------------------------------------------------------------------
 func _make_platform(x: float, y: float, w: float, color: Color) -> StaticBody2D:
 	var sb := StaticBody2D.new()
 	sb.collision_layer = 1
@@ -73,14 +192,13 @@ func _make_platform(x: float, y: float, w: float, color: Color) -> StaticBody2D:
 	cr.color = color
 	sb.add_child(cr)
 
-	# Lighter top highlight strip
-	var highlight := ColorRect.new()
-	highlight.offset_left = x
-	highlight.offset_top = y
-	highlight.offset_right = x + w
-	highlight.offset_bottom = y + 3.0
-	highlight.color = Color(color.r + 0.08, color.g + 0.08, color.b + 0.08)
-	sb.add_child(highlight)
+	var hl := ColorRect.new()
+	hl.offset_left = x
+	hl.offset_top = y
+	hl.offset_right = x + w
+	hl.offset_bottom = y + 3.0
+	hl.color = Color(color.r + 0.08, color.g + 0.08, color.b + 0.08)
+	sb.add_child(hl)
 
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
@@ -88,103 +206,112 @@ func _make_platform(x: float, y: float, w: float, color: Color) -> StaticBody2D:
 	shape.shape = rect
 	shape.position = Vector2(x + w * 0.5, y + float(PLAT_H) * 0.5)
 	sb.add_child(shape)
-
 	return sb
 
-func _spawn_ground_and_walls() -> void:
-	var ground_color := Color(0.20, 0.23, 0.28)
+func _make_moving_platform(x: float, y: float, w: float, color: Color) -> void:
+	var mp := AnimatableBody2D.new()
+	mp.set_script(MOVING_PLATFORM_SCRIPT)
+	mp.setup(x, y, w, color)
+	add_child(mp)
 
-	# Ground platform spanning full width
-	var ground_sb := StaticBody2D.new()
-	ground_sb.collision_layer = 1
-	ground_sb.collision_mask = 0
-	add_child(ground_sb)
+func _make_break_platform(x: float, y: float, w: float, color: Color) -> void:
+	var bp := StaticBody2D.new()
+	bp.set_script(BREAK_PLATFORM_SCRIPT)
+	bp.setup(x, y, w, color)
+	add_child(bp)
 
-	var ground_cr := ColorRect.new()
-	ground_cr.offset_left = 0.0
-	ground_cr.offset_top = float(GROUND_Y)
-	ground_cr.offset_right = float(level_width)
-	ground_cr.offset_bottom = float(GROUND_Y + 200)
-	ground_cr.color = ground_color
-	ground_sb.add_child(ground_cr)
+func _add_wall_pillar(x: float, y: float, w: float, h: float, color: Color) -> void:
+	if h < 30.0:
+		return
+	var sb := StaticBody2D.new()
+	sb.collision_layer = 1
+	sb.collision_mask = 0
+	add_child(sb)
+	var cr := ColorRect.new()
+	cr.offset_left = x
+	cr.offset_top = y
+	cr.offset_right = x + w
+	cr.offset_bottom = y + h
+	cr.color = color
+	sb.add_child(cr)
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(w, h)
+	shape.shape = rect
+	shape.position = Vector2(x + w * 0.5, y + h * 0.5)
+	sb.add_child(shape)
 
-	var ground_top := ColorRect.new()
-	ground_top.offset_left = 0.0
-	ground_top.offset_top = float(GROUND_Y)
-	ground_top.offset_right = float(level_width)
-	ground_top.offset_bottom = float(GROUND_Y) + 3.0
-	ground_top.color = Color(ground_color.r + 0.06, ground_color.g + 0.06, ground_color.b + 0.06)
-	ground_sb.add_child(ground_top)
+func _maybe_add_pillar(plat: Dictionary, color: Color) -> void:
+	if randf() >= 0.40:
+		return
+	var pw := 16.0
+	var px := plat["x"] + plat["w"] * 0.5 - pw * 0.5
+	var pt := plat["y"] + float(PLAT_H)
+	_add_wall_pillar(px, pt, pw, float(GROUND_Y) - pt, color)
 
-	var ground_shape := CollisionShape2D.new()
-	var ground_rect := RectangleShape2D.new()
-	ground_rect.size = Vector2(float(level_width), 200.0)
-	ground_shape.shape = ground_rect
-	ground_shape.position = Vector2(float(level_width) * 0.5, float(GROUND_Y) + 100.0)
-	ground_sb.add_child(ground_shape)
+func _maybe_add_corridor(gap_start: float, gap_end: float, plat_y: float, color: Color) -> void:
+	var gw := gap_end - gap_start
+	if gw < 110.0 or randf() >= 0.28:
+		return
+	var cx := gap_start + gw * 0.5
+	var pw := 14.0
+	var ph := float(GROUND_Y) - plat_y
+	_add_wall_pillar(cx - 48.0 - pw, plat_y, pw, ph, color)
+	_add_wall_pillar(cx + 48.0,       plat_y, pw, ph, color)
 
-	# Left wall
-	var wall_color := Color(0.18, 0.20, 0.25)
-	var lwall_sb := StaticBody2D.new()
-	lwall_sb.collision_layer = 1
-	lwall_sb.collision_mask = 0
-	add_child(lwall_sb)
-	var lwall_cr := ColorRect.new()
-	lwall_cr.offset_left = -24.0
-	lwall_cr.offset_top = -400.0
-	lwall_cr.offset_right = 0.0
-	lwall_cr.offset_bottom = float(GROUND_Y + 200)
-	lwall_cr.color = wall_color
-	lwall_sb.add_child(lwall_cr)
-	var lwall_shape := CollisionShape2D.new()
-	var lwall_rect := RectangleShape2D.new()
-	lwall_rect.size = Vector2(24.0, float(GROUND_Y + 600))
-	lwall_shape.shape = lwall_rect
-	lwall_shape.position = Vector2(-12.0, float(GROUND_Y) * 0.5)
-	lwall_sb.add_child(lwall_shape)
-
-	# Right wall
-	var rwall_sb: StaticBody2D = StaticBody2D.new()
-	rwall_sb.collision_layer = 1
-	rwall_sb.collision_mask = 0
-	add_child(rwall_sb)
-	var rwall_cr := ColorRect.new()
-	rwall_cr.offset_left = float(level_width)
-	rwall_cr.offset_top = -400.0
-	rwall_cr.offset_right = float(level_width + 24)
-	rwall_cr.offset_bottom = float(GROUND_Y + 200)
-	rwall_cr.color = wall_color
-	rwall_sb.add_child(rwall_cr)
-	var rwall_shape := CollisionShape2D.new()
-	var rwall_rect := RectangleShape2D.new()
-	rwall_rect.size = Vector2(24.0, float(GROUND_Y + 600))
-	rwall_shape.shape = rwall_rect
-	rwall_shape.position = Vector2(float(level_width + 12), float(GROUND_Y) * 0.5)
-	rwall_sb.add_child(rwall_shape)
-
-func _spawn_platforms() -> Array:
-	var depth: int = RunState.depth
+# ---------------------------------------------------------------------------
+# Platform spawning with section-based layout and platform variety
+# ---------------------------------------------------------------------------
+func _spawn_platforms(depth: int, pal: Dictionary) -> Array:
 	var plats: Array = []
 	var num: int = 5 + depth
 	var cur_x: float = 180.0
 	var cur_y: float = float(GROUND_Y) - 110.0
+	var trend: int = 0     # -1 = climb, 0 = flat, 1 = descend
+	var trend_left: int = 0
 
-	for _i in range(num):
+	for i in range(num):
+		# Pick a new directional section every 2-4 platforms
+		if trend_left <= 0:
+			trend_left = randi_range(2, 4)
+			trend = randi_range(-1, 1)
+		trend_left -= 1
+
+		var dy: float
+		match trend:
+			-1: dy = randf_range(-38.0, -5.0)   # climb (lower Y = higher on screen)
+			1:  dy = randf_range(5.0, 38.0)      # descend
+			_:  dy = randf_range(-18.0, 18.0)    # flat
+		cur_y = clampf(cur_y + dy, float(GROUND_Y) - 140.0, float(GROUND_Y) - 55.0)
+
 		var w: float = randf_range(90.0, 170.0)
-		cur_y = clampf(cur_y + randf_range(-40.0, 40.0), float(GROUND_Y) - 140.0, float(GROUND_Y) - 55.0)
-		var shade: float = randf_range(0.0, 0.07)
-		var base_r: float = 0.28 + shade
-		var base_g: float = 0.32 + shade
-		var base_b: float = 0.38 + shade
-		var color := Color(base_r, base_g, base_b)
-		_make_platform(cur_x, cur_y, w, color)
-		plats.append({"x": cur_x, "y": cur_y, "w": w})
-		cur_x += w + randf_range(75.0, 130.0)
+		var gap: float = randf_range(75.0, 130.0)
+
+		# Platform type — first platform always solid so the run starts safely
+		var roll := randf() if i > 0 else 1.0
+		if roll < 0.18:
+			_make_moving_platform(cur_x, cur_y, w, pal["move"])
+		elif roll < 0.33:
+			_make_break_platform(cur_x, cur_y, w, pal["brk"])
+		else:
+			var shade := randf_range(0.0, 0.07)
+			var bc := pal["plat"]
+			_make_platform(cur_x, cur_y, w, Color(bc.r + shade, bc.g + shade, bc.b + shade))
+
+		var pd := {"x": cur_x, "y": cur_y, "w": w}
+		plats.append(pd)
+		_maybe_add_pillar(pd, pal["support"])
+		_maybe_add_corridor(cur_x + w, cur_x + w + gap, cur_y, pal["corridor"])
+
+		cur_x += w + gap
 		if cur_x > float(level_width) - 200.0:
 			break
 
 	return plats
 
+# ---------------------------------------------------------------------------
+# Enemies, collectibles, exit, player — unchanged
+# ---------------------------------------------------------------------------
 func _spawn_enemies(platforms: Array) -> void:
 	var depth: int = RunState.depth
 	var count: int = platforms.size()
@@ -222,9 +349,9 @@ func _spawn_collectibles(platforms: Array) -> void:
 func _spawn_exit(platforms: Array) -> void:
 	if platforms.is_empty():
 		return
-	var last_plat: Dictionary = platforms[platforms.size() - 1]
+	var last: Dictionary = platforms[platforms.size() - 1]
 	var door := EXIT_DOOR_SCENE.instantiate()
-	door.position = Vector2(last_plat["x"] + last_plat["w"] * 0.5, last_plat["y"] - 36.0)
+	door.position = Vector2(last["x"] + last["w"] * 0.5, last["y"] - 36.0)
 	add_child(door)
 
 func _spawn_player() -> void:

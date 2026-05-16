@@ -29,6 +29,15 @@ class_name Player
 @export var slide_cooldown: float = 0.65
 @export var slide_threshold: float = 85.0
 
+# Sprint
+@export var sprint_multiplier: float = 1.65
+
+# Wall run
+@export var wall_slide_gravity_scale: float = 0.08
+@export var wall_slide_max_fall: float = 55.0
+@export var wall_jump_vel_x: float = 220.0
+@export var wall_jump_vel_y: float = -350.0
+
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var jumps_remaining: int = 0
 var coyote_timer: float = 0.0
@@ -47,6 +56,7 @@ var slide_cooldown_timer: float = 0.0
 var slide_dir: float = 1.0
 var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
+var is_wall_sliding: bool = false
 
 signal health_changed(new_health: int, max: int)
 signal died()
@@ -102,10 +112,12 @@ func _physics_process(delta: float) -> void:
 	_handle_jump_logic()
 
 	move_and_slide()
+	_update_wall_slide()
 
 	if is_on_floor():
 		jumps_remaining = max_jumps
 		coyote_timer = coyote_time
+		is_wall_sliding = false
 
 	_update_sprite(delta)
 
@@ -146,8 +158,11 @@ func _update_buffs(delta: float) -> void:
 
 func _handle_gravity(delta: float) -> void:
 	if not is_on_floor():
-		velocity.y += gravity * delta
-		velocity.y = min(velocity.y, 600)
+		if is_wall_sliding:
+			velocity.y = minf(velocity.y + gravity * wall_slide_gravity_scale * delta, wall_slide_max_fall)
+		else:
+			velocity.y += gravity * delta
+			velocity.y = min(velocity.y, 600)
 
 func _handle_jump_input() -> void:
 	if Input.is_action_just_pressed("jump"):
@@ -202,6 +217,8 @@ func _handle_horizontal_movement(delta: float) -> void:
 
 	var direction: float = Input.get_axis("move_left", "move_right")
 	var eff_speed: float = speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
+	if Input.is_action_pressed("sprint") and not is_crouching and not is_sliding:
+		eff_speed *= sprint_multiplier
 	if is_crouching:
 		eff_speed *= crouch_speed_mult
 
@@ -212,9 +229,30 @@ func _handle_horizontal_movement(delta: float) -> void:
 		var f := friction if is_on_floor() else air_friction
 		velocity.x = move_toward(velocity.x, 0, f * delta)
 
+func _update_wall_slide() -> void:
+	if is_on_floor() or is_crouching or is_sliding:
+		is_wall_sliding = false
+		return
+	if not is_on_wall() or velocity.y <= 0:
+		is_wall_sliding = false
+		return
+	var wn := get_wall_normal()
+	var dir := Input.get_axis("move_left", "move_right")
+	var pushing_into_wall := (wn.x < 0.0 and dir > 0.0) or (wn.x > 0.0 and dir < 0.0)
+	is_wall_sliding = pushing_into_wall
+	if is_wall_sliding:
+		facing_right = wn.x < 0.0
+
 func _handle_jump_logic() -> void:
 	if jump_buffer_timer > 0:
-		if is_on_floor() or coyote_timer > 0:
+		if is_wall_sliding:
+			var wn := get_wall_normal()
+			velocity.x = wn.x * wall_jump_vel_x
+			velocity.y = wall_jump_vel_y
+			jumps_remaining = max_jumps - 1
+			is_wall_sliding = false
+			jump_buffer_timer = 0
+		elif is_on_floor() or coyote_timer > 0:
 			if is_sliding:
 				_end_slide()
 			velocity.y = jump_velocity
@@ -351,6 +389,9 @@ func _update_sprite(delta: float) -> void:
 		target_y = 6.7
 	elif is_attacking:
 		target_scale = Vector2(0.384, 0.3)
+		target_y = 0.0
+	elif is_wall_sliding:
+		target_scale = Vector2(0.345, 0.27)
 		target_y = 0.0
 	elif not is_on_floor():
 		target_scale = Vector2(0.264, 0.345) if velocity.y < 0 else Vector2(0.336, 0.264)
