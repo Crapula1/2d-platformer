@@ -22,8 +22,6 @@ class_name Player
 @export var invincibility_time: float = 1.0
 @export var knockback_force: float = 250.0
 
-const BASE_SCALE := Vector2(0.33, 0.33)
-
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var jumps_remaining: int = 0
 var coyote_timer: float = 0.0
@@ -35,14 +33,16 @@ var is_invincible: bool = false
 var invincibility_timer: float = 0.0
 var facing_right: bool = true
 var is_dead: bool = false
+var active_buffs: Dictionary = {}
 
 signal health_changed(new_health: int, max: int)
 signal died()
 signal score_changed(new_score: int)
 
 var score: int = 0
+var _base_color: Color = Color(0.3, 0.7, 1.0)
 
-@onready var sprite: AnimatedSprite2D = $Sprite
+@onready var sprite: ColorRect = $Sprite
 @onready var attack_area: Area2D = $AttackArea
 @onready var attack_shape: CollisionShape2D = $AttackArea/CollisionShape2D
 @onready var hurtbox: Area2D = $Hurtbox
@@ -79,7 +79,6 @@ func _physics_process(delta: float) -> void:
 		jumps_remaining = max_jumps
 		coyote_timer = coyote_time
 
-	_update_animation()
 	_update_sprite()
 
 func _update_timers(delta: float) -> void:
@@ -98,6 +97,16 @@ func _update_timers(delta: float) -> void:
 			sprite.modulate.a = 1.0
 		else:
 			sprite.modulate.a = 0.3 if int(invincibility_timer * 20) % 2 == 0 else 1.0
+	_update_buffs(delta)
+
+func _update_buffs(delta: float) -> void:
+	var expired: Array[String] = []
+	for key in active_buffs:
+		active_buffs[key].timer -= delta
+		if active_buffs[key].timer <= 0:
+			expired.append(key)
+	for key in expired:
+		active_buffs.erase(key)
 
 func _handle_gravity(delta: float) -> void:
 	if not is_on_floor():
@@ -125,8 +134,9 @@ func _handle_jump_logic() -> void:
 
 func _handle_horizontal_movement(delta: float) -> void:
 	var direction: float = Input.get_axis("move_left", "move_right")
+	var effective_speed := speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
 	if direction != 0:
-		velocity.x = move_toward(velocity.x, direction * speed, acceleration * delta)
+		velocity.x = move_toward(velocity.x, direction * effective_speed, acceleration * delta)
 		facing_right = direction > 0
 	else:
 		var f = friction if is_on_floor() else air_friction
@@ -141,16 +151,26 @@ func _start_attack() -> void:
 	attack_timer = attack_duration
 	attack_shape.disabled = false
 	attack_area.position.x = 18 if facing_right else -18
-	sprite.modulate = Color(1.0, 0.9, 0.4, sprite.modulate.a)
+	sprite.color = Color(1.0, 0.85, 0.2)
 
 func _end_attack() -> void:
 	is_attacking = false
 	attack_shape.disabled = true
-	sprite.modulate = Color(1, 1, 1, sprite.modulate.a)
+	sprite.color = _get_current_base_color()
+
+func _get_current_base_color() -> Color:
+	if "damage" in active_buffs:
+		return Color(1.0, 0.55, 0.1)
+	if "speed" in active_buffs:
+		return Color(0.3, 0.6, 1.0)
+	if "shield" in active_buffs:
+		return Color(0.65, 0.3, 1.0)
+	return _base_color
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
-		body.take_damage(attack_damage, global_position)
+		var dmg := int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+		body.take_damage(dmg, global_position)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
@@ -164,10 +184,19 @@ func _on_hurtbox_body_entered(body: Node) -> void:
 		take_damage(body.get_damage(), body.global_position)
 
 func _collect(item: Area2D) -> void:
-	if item.has_method("collect"):
+	if item.has_method("apply_effect"):
+		item.apply_effect(self)
+	elif item.has_method("collect"):
 		var value = item.collect()
 		score += value
 		emit_signal("score_changed", score)
+
+func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> void:
+	active_buffs[type] = {"timer": duration, "magnitude": magnitude}
+	if type == "shield":
+		is_invincible = true
+		invincibility_timer = duration
+	sprite.color = _get_current_base_color()
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_invincible or is_dead:
@@ -186,30 +215,23 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 func _die() -> void:
 	is_dead = true
-	sprite.modulate = Color(0.5, 0.5, 0.5)
+	sprite.color = Color(0.45, 0.45, 0.45)
 	emit_signal("died")
 
 func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)
 	emit_signal("health_changed", current_health, max_health)
 
-func _update_animation() -> void:
-	sprite.flip_h = not facing_right
-	if is_on_floor() and abs(velocity.x) > 10.0:
-		if sprite.animation != &"walk":
-			sprite.play(&"walk")
-	else:
-		if sprite.animation != &"idle":
-			sprite.play(&"idle")
-
 func _update_sprite() -> void:
+	if not is_attacking:
+		sprite.color = _get_current_base_color()
 	if not is_on_floor():
 		if velocity.y < 0:
-			sprite.scale = BASE_SCALE * Vector2(0.9, 1.15)
+			sprite.scale = Vector2(0.9, 1.15)
 		else:
-			sprite.scale = BASE_SCALE * Vector2(1.1, 0.9)
+			sprite.scale = Vector2(1.1, 0.9)
 	else:
-		sprite.scale = sprite.scale.lerp(BASE_SCALE, 0.2)
+		sprite.scale = sprite.scale.lerp(Vector2.ONE, 0.2)
 
 func _spawn_double_jump_effect() -> void:
-	sprite.scale = BASE_SCALE * Vector2(1.3, 0.7)
+	sprite.scale = Vector2(1.3, 0.7)
