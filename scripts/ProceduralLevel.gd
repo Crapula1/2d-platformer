@@ -12,6 +12,7 @@ const PLAT_H: int  = 14
 const RANGE_SOLDIER_SCENE    := preload("res://scenes/RangeSoldier.tscn")
 const COIN_SCENE             := preload("res://scenes/Coin.tscn")
 const POWERUP_SCENE          := preload("res://scenes/PowerUp.tscn")
+const GRENADE_PICKUP_SCENE   := preload("res://scenes/GrenadePickup.tscn")
 const EXIT_DOOR_SCENE        := preload("res://scenes/ExitDoor.tscn")
 const PLAYER_SCENE           := preload("res://scenes/Player.tscn")
 const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
@@ -354,6 +355,7 @@ func _spawn_room_enemies(plats: Array, depth: int, is_first_room: bool) -> void:
 			add_child(e2)
 
 func _spawn_room_collectibles(plats: Array) -> void:
+	var grenade_spawned := false
 	for plat: Dictionary in plats:
 		var cn: int = randi_range(1, 3)
 		for c in range(cn):
@@ -365,6 +367,12 @@ func _spawn_room_collectibles(plats: Array) -> void:
 			pu.type = PowerUp.Type.values()[randi() % 4]
 			pu.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 24.0)
 			add_child(pu)
+		if not grenade_spawned and randf() < 0.40:
+			var gp := GRENADE_PICKUP_SCENE.instantiate() as GrenadePickup
+			gp.setup(randi() % 3)
+			gp.position = Vector2(plat["x"] + plat["w"] * 0.75, plat["y"] - 20.0)
+			add_child(gp)
+			grenade_spawned = true
 
 func _spawn_exit_in_room(plats: Array) -> void:
 	var pos: Vector2

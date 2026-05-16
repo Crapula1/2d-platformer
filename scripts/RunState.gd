@@ -6,6 +6,7 @@ var saved_health: int = 5
 var saved_max_health: int = 5
 var saved_score: int = 0
 var saved_grenade_type: int = 0
+var saved_grenade_count: int = 3
 var attack_bonus: int = 0
 var speed_mult: float = 1.0
 var grenade_cd_mult: float = 1.0
@@ -18,6 +19,7 @@ func start_new_run() -> void:
 	saved_max_health = 5
 	saved_score = 0
 	saved_grenade_type = 0
+	saved_grenade_count = 3
 	attack_bonus = 0
 	speed_mult = 1.0
 	grenade_cd_mult = 1.0
@@ -28,6 +30,7 @@ func save_from_player(player: Player) -> void:
 	saved_max_health = player.max_health
 	saved_score = player.score
 	saved_grenade_type = player.grenade_type
+	saved_grenade_count = player.grenade_count
 
 func advance_depth() -> void:
 	depth += 1
@@ -37,13 +40,14 @@ func apply_to_player(player: Player) -> void:
 	player.current_health = saved_health
 	player.score = saved_score
 	player.grenade_type = saved_grenade_type
+	player.grenade_count = saved_grenade_count
 	player.attack_damage = 2 + attack_bonus
 	player.speed = 180.0 * speed_mult
 	player.invincibility_time = 1.0 + invincibility_bonus
 	player.grenade_cooldown_base = 0.85 * grenade_cd_mult
 	player.emit_signal("health_changed", player.current_health, player.max_health)
 	player.emit_signal("score_changed", player.score)
-	player.emit_signal("grenade_changed", Player.GRENADE_NAMES[player.grenade_type])
+	player.emit_signal("grenade_changed", Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
 
 func apply_upgrade(id: String) -> void:
 	match id:

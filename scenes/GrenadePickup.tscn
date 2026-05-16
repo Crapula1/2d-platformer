@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/GrenadePickup.gd" id="1_gpickup"]
+
+[sub_resource type="RectangleShape2D" id="gpickup_shape"]
+size = Vector2(12, 16)
+
+[node name="GrenadePickup" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("1_gpickup")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("gpickup_shape")

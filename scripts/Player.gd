@@ -66,16 +66,18 @@ var is_wall_sliding: bool = false
 signal health_changed(new_health: int, max: int)
 signal died()
 signal score_changed(new_score: int)
-signal grenade_changed(type_name: String)
+signal grenade_changed(type_name: String, count: int)
 
 var score: int = 0
 
 const GRENADE_SCENE := preload("res://scenes/Grenade.tscn")
 const PLAYER_BULLET_SCENE := preload("res://scenes/PlayerBullet.tscn")
 const GRENADE_NAMES := ["Explosive", "Incendiary", "Electric"]
+const GRENADE_MAX: int = 3
 @export var throw_force: float = 310.0
 
 var grenade_type: int = 0
+var grenade_count: int = 3
 var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
 var _shoot_timer: float = 0.0
@@ -99,7 +101,7 @@ func _ready() -> void:
 	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
 	emit_signal("health_changed", current_health, max_health)
 	emit_signal("score_changed", score)
-	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type])
+	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
@@ -278,10 +280,12 @@ func _handle_jump_logic() -> void:
 func _handle_grenade_input() -> void:
 	if Input.is_action_just_pressed("cycle_grenade"):
 		grenade_type = (grenade_type + 1) % 3
-		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type])
-	if Input.is_action_just_pressed("throw_grenade") and _grenade_cooldown <= 0 and not is_dead:
+		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+	if Input.is_action_just_pressed("throw_grenade") and _grenade_cooldown <= 0 and not is_dead and grenade_count > 0:
 		_throw_grenade()
+		grenade_count -= 1
 		_grenade_cooldown = grenade_cooldown_base
+		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
 
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
@@ -289,6 +293,14 @@ func _throw_grenade() -> void:
 	g.global_position = global_position + Vector2(0, -10)
 	var dir: float = 1.0 if facing_right else -1.0
 	g.setup(Grenade.Type.values()[grenade_type], Vector2(dir * throw_force, -throw_force * 0.65))
+
+func add_grenade(type: int) -> bool:
+	if grenade_count >= GRENADE_MAX:
+		return false
+	grenade_count += 1
+	grenade_type = type
+	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+	return true
 
 func _handle_attack_input() -> void:
 	if Input.is_action_just_pressed("attack") and not is_attacking:

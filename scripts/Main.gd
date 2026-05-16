@@ -63,7 +63,7 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Tab: Cycle  |  R: Restart"
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart"
 
 func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
@@ -86,8 +86,8 @@ func _on_health_changed(new_health: int, max_health: int) -> void:
 func _on_score_changed(new_score: int) -> void:
 	score_label.text = "Coins: " + str(new_score)
 
-func _on_grenade_changed(type_name: String) -> void:
-	grenade_label.text = "[ " + type_name + " ]"
+func _on_grenade_changed(type_name: String, count: int) -> void:
+	grenade_label.text = "[ " + type_name + "  x" + str(count) + " ]"
 	if player != null:
 		var idx: int = player.grenade_type
 		grenade_label.add_theme_color_override("font_color", GRENADE_COLORS[idx])

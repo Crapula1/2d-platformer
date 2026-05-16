@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ExplosiveEffect.gd" id="1_exp"]
 
 [sub_resource type="CircleShape2D" id="exp_shape"]
-radius = 56.0
+radius = 28.0
 
 [node name="ExplosiveEffect" type="Area2D"]
 collision_layer = 0
