@@ -1,6 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+/web/
 
 # Original template folder (not part of this project)
 /godot_platformer/
