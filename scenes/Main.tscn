@@ -42,6 +42,15 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 20
 
+[node name="GrenadeLabel" type="Label" parent="HUD/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "[ Explosive ]"
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(1, 0.72, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 15
+
 [node name="CenterContainer" type="CenterContainer" parent="HUD"]
 anchors_preset = 8
 anchor_left = 0.5

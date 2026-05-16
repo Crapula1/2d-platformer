@@ -52,8 +52,16 @@ var _base_color := Color(0.3, 0.7, 1.0)
 signal health_changed(new_health: int, max: int)
 signal died()
 signal score_changed(new_score: int)
+signal grenade_changed(type_name: String)
 
 var score: int = 0
+
+const GRENADE_SCENE := preload("res://scenes/Grenade.tscn")
+const GRENADE_NAMES := ["Explosive", "Incendiary", "Electric"]
+@export var throw_force: float = 310.0
+
+var grenade_type: int = 0
+var _grenade_cooldown: float = 0.0
 
 @onready var sprite: ColorRect = $Sprite
 @onready var stand_shape: CollisionShape2D = $CollisionShape2D
@@ -74,6 +82,7 @@ func _ready() -> void:
 	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
 	emit_signal("health_changed", current_health, max_health)
 	emit_signal("score_changed", score)
+	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type])
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
@@ -89,6 +98,7 @@ func _physics_process(delta: float) -> void:
 	_handle_crouch_input()
 	_handle_horizontal_movement(delta)
 	_handle_attack_input()
+	_handle_grenade_input()
 	_handle_jump_logic()
 
 	move_and_slide()
@@ -106,6 +116,8 @@ func _update_timers(delta: float) -> void:
 		jump_buffer_timer -= delta
 	if slide_cooldown_timer > 0:
 		slide_cooldown_timer -= delta
+	if _grenade_cooldown > 0:
+		_grenade_cooldown -= delta
 	if is_sliding:
 		slide_timer -= delta
 		if slide_timer <= 0:
@@ -214,6 +226,21 @@ func _handle_jump_logic() -> void:
 			jumps_remaining -= 1
 			jump_buffer_timer = 0
 			_spawn_double_jump_effect()
+
+func _handle_grenade_input() -> void:
+	if Input.is_action_just_pressed("cycle_grenade"):
+		grenade_type = (grenade_type + 1) % 3
+		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type])
+	if Input.is_action_just_pressed("throw_grenade") and _grenade_cooldown <= 0 and not is_dead:
+		_throw_grenade()
+		_grenade_cooldown = 0.85
+
+func _throw_grenade() -> void:
+	var g := GRENADE_SCENE.instantiate() as Grenade
+	get_parent().add_child(g)
+	g.global_position = global_position + Vector2(0, -10)
+	var dir := 1.0 if facing_right else -1.0
+	g.setup(Grenade.Type.values()[grenade_type], Vector2(dir * throw_force, -throw_force * 0.65))
 
 func _handle_attack_input() -> void:
 	if Input.is_action_just_pressed("attack") and not is_attacking:

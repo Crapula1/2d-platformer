@@ -6,6 +6,13 @@ extends Node2D
 @onready var score_label: Label = $HUD/MarginContainer/VBoxContainer/ScoreLabel
 @onready var message_label: Label = $HUD/CenterContainer/MessageLabel
 @onready var hint_label: Label = $HUD/HintLabel
+@onready var grenade_label: Label = $HUD/MarginContainer/VBoxContainer/GrenadeLabel
+
+const GRENADE_COLORS := [
+	Color(1.0, 0.72, 0.2),   # Explosive - gold
+	Color(1.0, 0.42, 0.08),  # Incendiary - orange
+	Color(0.35, 0.88, 1.0),  # Electric - cyan
+]
 
 var spawn_position: Vector2
 
@@ -14,6 +21,7 @@ func _ready() -> void:
 	player.health_changed.connect(_on_health_changed)
 	player.score_changed.connect(_on_score_changed)
 	player.died.connect(_on_player_died)
+	player.grenade_changed.connect(_on_grenade_changed)
 
 	# Connect all goals
 	for goal in get_tree().get_nodes_in_group("goal"):
@@ -42,6 +50,11 @@ func _on_score_changed(new_score: int) -> void:
 func _on_player_died() -> void:
 	message_label.text = "YOU DIED\nPress R to restart"
 	message_label.modulate = Color(1, 0.3, 0.3)
+
+func _on_grenade_changed(type_name: String) -> void:
+	grenade_label.text = "[ " + type_name + " ]"
+	var idx := player.grenade_type
+	grenade_label.add_theme_color_override("font_color", GRENADE_COLORS[idx])
 
 func _on_goal_reached() -> void:
 	message_label.text = "LEVEL COMPLETE!\nPress R to play again"

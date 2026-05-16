@@ -121,6 +121,9 @@ func _set_state(new_state: State) -> void:
 			alert_indicator.visible = false
 
 func _run_state(delta: float) -> void:
+	if stunned_timer > 0:
+		velocity.x = move_toward(velocity.x, 0, 700 * delta)
+		return
 	match state:
 		State.PATROL:
 			_patrol(delta)
@@ -192,6 +195,16 @@ func _has_line_of_sight(dist: float) -> bool:
 
 func get_damage() -> int:
 	return contact_damage
+
+func stun(duration: float) -> void:
+	if is_dead:
+		return
+	stunned_timer = maxf(stunned_timer, duration)
+	body_visual.modulate = Color(0.45, 0.85, 2.0)
+	get_tree().create_timer(0.12).timeout.connect(func():
+		if is_instance_valid(self) and not is_dead:
+			body_visual.modulate = Color.WHITE
+	)
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_dead:

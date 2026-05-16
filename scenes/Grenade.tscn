@@ -1,0 +1,54 @@
+[gd_scene load_steps=3 format=3 uid="uid://grenade0001"]
+
+[ext_resource type="Script" path="res://scripts/Grenade.gd" id="1_grenade"]
+
+[sub_resource type="CircleShape2D" id="grenade_col"]
+radius = 4.0
+
+[node name="Grenade" type="RigidBody2D"]
+gravity_scale = 1.3
+linear_damp = 0.1
+angular_damp = 3.0
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("1_grenade")
+
+[node name="Sprite" type="Node2D" parent="."]
+
+[node name="Body" type="ColorRect" parent="Sprite"]
+offset_left = -4.0
+offset_top = -5.0
+offset_right = 4.0
+offset_bottom = 5.0
+color = Color(0.30, 0.30, 0.30, 1)
+
+[node name="Top" type="ColorRect" parent="Sprite"]
+offset_left = -3.0
+offset_top = -8.0
+offset_right = 3.0
+offset_bottom = -5.0
+color = Color(0.22, 0.22, 0.22, 1)
+
+[node name="Band" type="ColorRect" parent="Sprite"]
+offset_left = -4.0
+offset_top = -1.0
+offset_right = 4.0
+offset_bottom = 1.0
+color = Color(0.42, 0.40, 0.05, 1)
+
+[node name="Lever" type="ColorRect" parent="Sprite"]
+offset_left = -6.0
+offset_top = -8.0
+offset_right = -2.0
+offset_bottom = -5.0
+color = Color(0.55, 0.52, 0.45, 1)
+
+[node name="Indicator" type="ColorRect" parent="Sprite"]
+offset_left = 2.0
+offset_top = -3.0
+offset_right = 5.0
+offset_bottom = 0.0
+color = Color(1.0, 0.85, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("grenade_col")

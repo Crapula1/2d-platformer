@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://electricz01"]
+
+[ext_resource type="Script" path="res://scripts/ElectricZone.gd" id="1_elec"]
+
+[sub_resource type="CircleShape2D" id="elec_shape"]
+radius = 46.0
+
+[node name="ElectricZone" type="Area2D"]
+collision_layer = 0
+collision_mask = 14
+script = ExtResource("1_elec")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("elec_shape")
