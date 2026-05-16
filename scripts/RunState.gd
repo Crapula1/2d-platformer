@@ -40,8 +40,7 @@ func apply_to_player(player: Player) -> void:
 	player.attack_damage = 2 + attack_bonus
 	player.speed = 180.0 * speed_mult
 	player.invincibility_time = 1.0 + invincibility_bonus
-	# Apply grenade cooldown mult via a stored property the grenade input reads
-	# We patch _grenade_cooldown indirectly by adjusting through a signal chain
+	player.grenade_cooldown_base = 0.85 * grenade_cd_mult
 	player.emit_signal("health_changed", player.current_health, player.max_health)
 	player.emit_signal("score_changed", player.score)
 	player.emit_signal("grenade_changed", Player.GRENADE_NAMES[player.grenade_type])

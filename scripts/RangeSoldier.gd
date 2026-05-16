@@ -212,7 +212,7 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	current_health -= amount
 	stunned_timer = 0.25
 
-	var knockback_dir := sign(global_position.x - source_pos.x)
+	var knockback_dir: float = sign(global_position.x - source_pos.x)
 	velocity.x = knockback_dir * 160
 	velocity.y = -100
 

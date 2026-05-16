@@ -61,6 +61,7 @@ const GRENADE_NAMES := ["Explosive", "Incendiary", "Electric"]
 @export var throw_force: float = 310.0
 
 var grenade_type: int = 0
+var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
 
 @onready var sprite: ColorRect = $Sprite
@@ -201,7 +202,7 @@ func _handle_horizontal_movement(delta: float) -> void:
 		return
 
 	var direction: float = Input.get_axis("move_left", "move_right")
-	var eff_speed := speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
+	var eff_speed: float = speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
 	if is_crouching:
 		eff_speed *= crouch_speed_mult
 
@@ -233,13 +234,13 @@ func _handle_grenade_input() -> void:
 		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type])
 	if Input.is_action_just_pressed("throw_grenade") and _grenade_cooldown <= 0 and not is_dead:
 		_throw_grenade()
-		_grenade_cooldown = 0.85
+		_grenade_cooldown = grenade_cooldown_base
 
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
 	get_parent().add_child(g)
 	g.global_position = global_position + Vector2(0, -10)
-	var dir := 1.0 if facing_right else -1.0
+	var dir: float = 1.0 if facing_right else -1.0
 	g.setup(Grenade.Type.values()[grenade_type], Vector2(dir * throw_force, -throw_force * 0.65))
 
 func _handle_attack_input() -> void:
@@ -265,14 +266,14 @@ func _end_attack() -> void:
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
-		var dmg := int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+		var dmg: int = int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
 		if _slide_bash:
 			dmg = int(dmg * 1.6)
 		body.take_damage(dmg, global_position)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
-		var dmg := area.get_damage() if area.has_method("get_damage") else 1
+		var dmg: int = area.get_damage() if area.has_method("get_damage") else 1
 		take_damage(dmg, area.global_position)
 	elif area.is_in_group("collectible"):
 		_collect(area)

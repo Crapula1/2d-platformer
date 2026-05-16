@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://bp1xy2z3a4b5c"]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/Player.gd" id="1_player"]
 

@@ -64,7 +64,7 @@ func _detonate() -> void:
 		Type.INCENDIARY: effect_scene = FIRE_ZONE_SCENE
 		Type.ELECTRIC:   effect_scene = ELECTRIC_SCENE
 
-	var effect = effect_scene.instantiate()
+	var effect: Node2D = effect_scene.instantiate() as Node2D
 	get_parent().add_child(effect)
 	effect.global_position = global_position
 	queue_free()

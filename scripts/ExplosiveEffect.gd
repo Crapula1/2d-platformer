@@ -13,15 +13,16 @@ func _ready() -> void:
 		_hit(body)
 	_fade_out()
 
-func _hit(body: Node) -> void:
+func _hit(body: Node2D) -> void:
 	if not body.has_method("take_damage"):
 		return
-	var dmg := PLAYER_DAMAGE if body is Player else ENEMY_DAMAGE
+	var dmg: int = PLAYER_DAMAGE if body is Player else ENEMY_DAMAGE
 	body.take_damage(dmg, global_position)
-	# Knockback away from blast
 	if body is CharacterBody2D:
-		var dir := (body.global_position - global_position).normalized()
-		body.velocity += dir * PUSH_FORCE
+		var cb: CharacterBody2D = body as CharacterBody2D
+		var offset: Vector2 = cb.global_position - global_position
+		var dir: Vector2 = offset.normalized()
+		cb.velocity += dir * PUSH_FORCE
 
 func _spawn_visuals() -> void:
 	# White core flash
