@@ -6,6 +6,7 @@ class_name Player
 @export var acceleration: float = 1200.0
 @export var friction: float = 1000.0
 @export var air_friction: float = 200.0
+@export var crouch_speed_mult: float = 0.45
 
 # Jumping
 @export var jump_velocity: float = -380.0
@@ -17,10 +18,16 @@ class_name Player
 
 # Combat
 @export var max_health: int = 5
-@export var attack_damage: int = 1
-@export var attack_duration: float = 0.25
+@export var attack_damage: int = 2
+@export var attack_duration: float = 0.22
 @export var invincibility_time: float = 1.0
-@export var knockback_force: float = 250.0
+@export var knockback_force: float = 300.0
+
+# Slide
+@export var slide_speed: float = 270.0
+@export var slide_duration: float = 0.38
+@export var slide_cooldown: float = 0.65
+@export var slide_threshold: float = 85.0
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var jumps_remaining: int = 0
@@ -33,16 +40,25 @@ var is_invincible: bool = false
 var invincibility_timer: float = 0.0
 var facing_right: bool = true
 var is_dead: bool = false
+var is_crouching: bool = false
+var is_sliding: bool = false
+var slide_timer: float = 0.0
+var slide_cooldown_timer: float = 0.0
+var slide_dir: float = 1.0
+var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
+var _base_color := Color(0.3, 0.7, 1.0)
 
 signal health_changed(new_health: int, max: int)
 signal died()
 signal score_changed(new_score: int)
 
 var score: int = 0
-var _base_color: Color = Color(0.3, 0.7, 1.0)
 
 @onready var sprite: ColorRect = $Sprite
+@onready var stand_shape: CollisionShape2D = $CollisionShape2D
+@onready var crouch_shape: CollisionShape2D = $CrouchShape
+@onready var ceiling_ray: RayCast2D = $CeilingRay
 @onready var attack_area: Area2D = $AttackArea
 @onready var attack_shape: CollisionShape2D = $AttackArea/CollisionShape2D
 @onready var hurtbox: Area2D = $Hurtbox
@@ -51,6 +67,7 @@ func _ready() -> void:
 	current_health = max_health
 	jumps_remaining = max_jumps
 	attack_shape.disabled = true
+	crouch_shape.disabled = true
 	add_to_group("player")
 	attack_area.body_entered.connect(_on_attack_hit)
 	hurtbox.area_entered.connect(_on_hurtbox_area_entered)
@@ -69,6 +86,7 @@ func _physics_process(delta: float) -> void:
 	_update_timers(delta)
 	_handle_gravity(delta)
 	_handle_jump_input()
+	_handle_crouch_input()
 	_handle_horizontal_movement(delta)
 	_handle_attack_input()
 	_handle_jump_logic()
@@ -79,13 +97,19 @@ func _physics_process(delta: float) -> void:
 		jumps_remaining = max_jumps
 		coyote_timer = coyote_time
 
-	_update_sprite()
+	_update_sprite(delta)
 
 func _update_timers(delta: float) -> void:
 	if not is_on_floor():
 		coyote_timer -= delta
 	if jump_buffer_timer > 0:
 		jump_buffer_timer -= delta
+	if slide_cooldown_timer > 0:
+		slide_cooldown_timer -= delta
+	if is_sliding:
+		slide_timer -= delta
+		if slide_timer <= 0:
+			_end_slide()
 	if is_attacking:
 		attack_timer -= delta
 		if attack_timer <= 0:
@@ -119,9 +143,68 @@ func _handle_jump_input() -> void:
 	if Input.is_action_just_released("jump") and velocity.y < 0:
 		velocity.y *= jump_cut_multiplier
 
+func _handle_crouch_input() -> void:
+	if is_sliding:
+		return
+
+	if Input.is_action_just_pressed("crouch") and is_on_floor():
+		if abs(velocity.x) >= slide_threshold and slide_cooldown_timer <= 0:
+			_start_slide()
+			return
+
+	var wants_crouch := Input.is_action_pressed("crouch") and is_on_floor()
+	if wants_crouch and not is_crouching:
+		_set_crouching(true)
+	elif not wants_crouch and is_crouching and _can_stand():
+		_set_crouching(false)
+
+func _start_slide() -> void:
+	is_sliding = true
+	slide_timer = slide_duration
+	slide_dir = sign(velocity.x) if abs(velocity.x) > 1.0 else (1.0 if facing_right else -1.0)
+	velocity.x = slide_dir * slide_speed
+	_set_crouching(true)
+	if not is_invincible:
+		is_invincible = true
+		invincibility_timer = 0.22
+
+func _end_slide() -> void:
+	is_sliding = false
+	slide_cooldown_timer = slide_cooldown
+	if not Input.is_action_pressed("crouch") and _can_stand():
+		_set_crouching(false)
+
+func _set_crouching(value: bool) -> void:
+	is_crouching = value
+	stand_shape.set_deferred("disabled", value)
+	crouch_shape.set_deferred("disabled", not value)
+
+func _can_stand() -> bool:
+	return not ceiling_ray.is_colliding()
+
+func _handle_horizontal_movement(delta: float) -> void:
+	if is_sliding:
+		# Decelerate smoothly through the slide
+		velocity.x = move_toward(velocity.x, slide_dir * (slide_speed * 0.4), 110.0 * delta)
+		return
+
+	var direction: float = Input.get_axis("move_left", "move_right")
+	var eff_speed := speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
+	if is_crouching:
+		eff_speed *= crouch_speed_mult
+
+	if direction != 0:
+		velocity.x = move_toward(velocity.x, direction * eff_speed, acceleration * delta)
+		facing_right = direction > 0
+	else:
+		var f := friction if is_on_floor() else air_friction
+		velocity.x = move_toward(velocity.x, 0, f * delta)
+
 func _handle_jump_logic() -> void:
 	if jump_buffer_timer > 0:
 		if is_on_floor() or coyote_timer > 0:
+			if is_sliding:
+				_end_slide()
 			velocity.y = jump_velocity
 			jumps_remaining = max_jumps - 1
 			jump_buffer_timer = 0
@@ -132,44 +215,32 @@ func _handle_jump_logic() -> void:
 			jump_buffer_timer = 0
 			_spawn_double_jump_effect()
 
-func _handle_horizontal_movement(delta: float) -> void:
-	var direction: float = Input.get_axis("move_left", "move_right")
-	var effective_speed := speed * (active_buffs["speed"].magnitude if "speed" in active_buffs else 1.0)
-	if direction != 0:
-		velocity.x = move_toward(velocity.x, direction * effective_speed, acceleration * delta)
-		facing_right = direction > 0
-	else:
-		var f = friction if is_on_floor() else air_friction
-		velocity.x = move_toward(velocity.x, 0, f * delta)
-
 func _handle_attack_input() -> void:
 	if Input.is_action_just_pressed("attack") and not is_attacking:
 		_start_attack()
 
 func _start_attack() -> void:
+	_slide_bash = is_sliding
+	if is_sliding:
+		_end_slide()
 	is_attacking = true
 	attack_timer = attack_duration
 	attack_shape.disabled = false
-	attack_area.position.x = 18 if facing_right else -18
-	sprite.color = Color(1.0, 0.85, 0.2)
+	attack_area.position.x = 20 if facing_right else -20
+	# Slide bash gets a fiery orange tint, normal bash gets yellow
+	sprite.color = Color(1.0, 0.38, 0.08) if _slide_bash else Color(1.0, 0.85, 0.2)
 
 func _end_attack() -> void:
 	is_attacking = false
+	_slide_bash = false
 	attack_shape.disabled = true
-	sprite.color = _get_current_base_color()
-
-func _get_current_base_color() -> Color:
-	if "damage" in active_buffs:
-		return Color(1.0, 0.55, 0.1)
-	if "speed" in active_buffs:
-		return Color(0.3, 0.6, 1.0)
-	if "shield" in active_buffs:
-		return Color(0.65, 0.3, 1.0)
-	return _base_color
+	sprite.color = _get_base_color()
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
 		var dmg := int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+		if _slide_bash:
+			dmg = int(dmg * 1.6)
 		body.take_damage(dmg, global_position)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
@@ -196,7 +267,7 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 	if type == "shield":
 		is_invincible = true
 		invincibility_timer = duration
-	sprite.color = _get_current_base_color()
+	sprite.color = _get_base_color()
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_invincible or is_dead:
@@ -204,12 +275,12 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	current_health -= amount
 	is_invincible = true
 	invincibility_timer = invincibility_time
+	if is_sliding:
+		_end_slide()
 	emit_signal("health_changed", current_health, max_health)
-
-	var knockback_dir = (global_position - source_pos).normalized()
+	var knockback_dir := (global_position - source_pos).normalized()
 	velocity.x = knockback_dir.x * knockback_force
 	velocity.y = -200
-
 	if current_health <= 0:
 		_die()
 
@@ -222,16 +293,38 @@ func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)
 	emit_signal("health_changed", current_health, max_health)
 
-func _update_sprite() -> void:
+func _get_base_color() -> Color:
+	if "damage" in active_buffs: return Color(1.0, 0.55, 0.1)
+	if "speed"  in active_buffs: return Color(0.3, 0.6, 1.0)
+	if "shield" in active_buffs: return Color(0.65, 0.3, 1.0)
+	return _base_color
+
+func _update_sprite(delta: float) -> void:
 	if not is_attacking:
-		sprite.color = _get_current_base_color()
-	if not is_on_floor():
-		if velocity.y < 0:
-			sprite.scale = Vector2(0.9, 1.15)
-		else:
-			sprite.scale = Vector2(1.1, 0.9)
+		sprite.color = _get_base_color()
+
+	var target_scale: Vector2
+	var target_y: float
+
+	if is_sliding:
+		target_scale = Vector2(1.35, 0.4)
+		target_y = 8.4
+	elif is_crouching:
+		target_scale = Vector2(1.12, 0.52)
+		target_y = 6.7
+	elif is_attacking:
+		target_scale = Vector2(1.28, 1.0)
+		target_y = 0.0
+	elif not is_on_floor():
+		target_scale = Vector2(0.88, 1.15) if velocity.y < 0 else Vector2(1.12, 0.88)
+		target_y = 0.0
 	else:
-		sprite.scale = sprite.scale.lerp(Vector2.ONE, 0.2)
+		target_scale = Vector2.ONE
+		target_y = 0.0
+
+	var t := minf(delta * 22.0, 1.0)
+	sprite.scale = sprite.scale.lerp(target_scale, t)
+	sprite.position.y = lerpf(sprite.position.y, target_y, t)
 
 func _spawn_double_jump_effect() -> void:
 	sprite.scale = Vector2(1.3, 0.7)
