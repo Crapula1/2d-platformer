@@ -1,7 +1,7 @@
 extends Area2D
 class_name GrenadePickup
 
-const GRENADE_COLORS := [
+const GRENADE_COLORS: Array[Color] = [
 	Color(1.0, 0.85, 0.2),
 	Color(1.0, 0.42, 0.08),
 	Color(0.35, 0.88, 1.0),
