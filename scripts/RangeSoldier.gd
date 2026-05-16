@@ -144,7 +144,7 @@ func _patrol(delta: float) -> void:
 	wall_check.target_position = Vector2(20 * direction, 0)
 	floor_check.position.x = 16 * direction
 
-	var dist_from_start := abs(global_position.x - start_position.x)
+	var dist_from_start: float = absf(global_position.x - start_position.x)
 	if dist_from_start > patrol_distance or wall_check.is_colliding() \
 			or (is_on_floor() and not floor_check.is_colliding()):
 		direction *= -1
