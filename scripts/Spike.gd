@@ -1,5 +1,4 @@
-extends Area2D
-class_name Spike
+extends StaticBody2D
 
 func _ready() -> void:
 	add_to_group("hazard")
