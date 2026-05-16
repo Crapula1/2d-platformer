@@ -1,0 +1,42 @@
+name: Export Web Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'web/**'
+      - '.github/**'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot 4.6
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          mv "Godot_v4.6-stable_linux.x86_64" godot
+          chmod +x godot
+
+      - name: Download export templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/4.6.stable
+          wget -q "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_export_templates.tpz" -O templates.tpz
+          unzip -q templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/4.6.stable/
+
+      - name: Import project
+        run: ./godot --headless --editor --quit --path . 2>&1 | tail -5 || true
+
+      - name: Export Web
+        run: ./godot --headless --export-release "Web" web/index.html --path . 2>&1
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "ci: rebuild web export [skip ci]" && git push)
