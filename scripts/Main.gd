@@ -152,7 +152,7 @@ func _show_upgrade_screen() -> void:
 	var btn_y: float = 220.0
 
 	for i in range(choices.size()):
-		var upg: Dictionary = choices[i]
+		var upg: Dictionary = choices[i] as Dictionary
 		var btn := Button.new()
 		btn.text = upg["name"] + "\n" + upg["desc"]
 		btn.custom_minimum_size = Vector2(btn_w, btn_h)

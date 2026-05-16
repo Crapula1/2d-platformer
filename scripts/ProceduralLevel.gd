@@ -83,7 +83,7 @@ func _spawn_background(pal: Dictionary) -> void:
 	bg.offset_top = -400.0
 	bg.offset_right = float(level_width + 200)
 	bg.offset_bottom = float(GROUND_Y + 400)
-	bg.color = pal["bg"]
+	bg.color = pal["bg"] as Color
 	bg_root.add_child(bg)
 
 	for _i in range(randi_range(4, 7)):
@@ -93,7 +93,7 @@ func _spawn_background(pal: Dictionary) -> void:
 		strip.offset_top = sy
 		strip.offset_right = float(level_width + 200)
 		strip.offset_bottom = sy + float(randi_range(16, 42))
-		strip.color = pal["strip"]
+		strip.color = pal["strip"] as Color
 		bg_root.add_child(strip)
 
 	var px: int = 0
@@ -103,7 +103,7 @@ func _spawn_background(pal: Dictionary) -> void:
 		p.offset_top = -400.0
 		p.offset_right = float(px + 8)
 		p.offset_bottom = float(GROUND_Y + 400)
-		p.color = pal["pillar"]
+		p.color = pal["pillar"] as Color
 		bg_root.add_child(p)
 		px += 200
 
@@ -290,9 +290,9 @@ func _spawn_platforms(depth: int, pal: Dictionary) -> Array:
 		# Platform type — first platform always solid so the run starts safely
 		var roll := randf() if i > 0 else 1.0
 		if roll < 0.18:
-			_make_moving_platform(cur_x, cur_y, w, pal["move"])
+			_make_moving_platform(cur_x, cur_y, w, pal["move"] as Color)
 		elif roll < 0.33:
-			_make_break_platform(cur_x, cur_y, w, pal["brk"])
+			_make_break_platform(cur_x, cur_y, w, pal["brk"] as Color)
 		else:
 			var shade := randf_range(0.0, 0.07)
 			var bc: Color = pal["plat"]
@@ -300,8 +300,8 @@ func _spawn_platforms(depth: int, pal: Dictionary) -> Array:
 
 		var pd := {"x": cur_x, "y": cur_y, "w": w}
 		plats.append(pd)
-		_maybe_add_pillar(pd, pal["support"])
-		_maybe_add_corridor(cur_x + w, cur_x + w + gap, cur_y, pal["corridor"])
+		_maybe_add_pillar(pd, pal["support"] as Color)
+		_maybe_add_corridor(cur_x + w, cur_x + w + gap, cur_y, pal["corridor"] as Color)
 
 		cur_x += w + gap
 		if cur_x > float(level_width) - 200.0:
@@ -318,7 +318,7 @@ func _spawn_enemies(platforms: Array) -> void:
 	for i in range(count):
 		if i == 0 or i == count - 1:
 			continue
-		var plat: Dictionary = platforms[i]
+		var plat: Dictionary = platforms[i] as Dictionary
 		if randf() < 0.60:
 			var enemy := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
 			enemy.max_health = 3 + int(depth / 2.0)
@@ -333,7 +333,7 @@ func _spawn_enemies(platforms: Array) -> void:
 			add_child(enemy2)
 
 func _spawn_collectibles(platforms: Array) -> void:
-	for plat in platforms:
+	for plat: Dictionary in platforms:
 		var coin_count: int = randi_range(2, 3)
 		for c in range(coin_count):
 			var coin := COIN_SCENE.instantiate()
@@ -349,7 +349,7 @@ func _spawn_collectibles(platforms: Array) -> void:
 func _spawn_exit(platforms: Array) -> void:
 	if platforms.is_empty():
 		return
-	var last: Dictionary = platforms[platforms.size() - 1]
+	var last: Dictionary = platforms[platforms.size() - 1] as Dictionary
 	var door := EXIT_DOOR_SCENE.instantiate()
 	door.position = Vector2(last["x"] + last["w"] * 0.5, last["y"] - 36.0)
 	add_child(door)
