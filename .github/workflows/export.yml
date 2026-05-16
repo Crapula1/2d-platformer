@@ -14,6 +14,8 @@ env:
 jobs:
   export:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
