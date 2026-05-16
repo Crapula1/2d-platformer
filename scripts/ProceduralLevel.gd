@@ -144,7 +144,7 @@ func _spawn_ground_and_walls() -> void:
 	lwall_sb.add_child(lwall_shape)
 
 	# Right wall
-	var rwall_sb := StaticBody2D.new()
+	var rwall_sb: StaticBody2D = StaticBody2D.new()
 	rwall_sb.collision_layer = 1
 	rwall_sb.collision_mask = 0
 	add_child(rwall_sb)
@@ -194,7 +194,7 @@ func _spawn_enemies(platforms: Array) -> void:
 		var plat: Dictionary = platforms[i]
 		if randf() < 0.60:
 			var enemy := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
-			enemy.max_health = 3 + depth / 2
+			enemy.max_health = 3 + int(depth / 2.0)
 			enemy.fire_rate = 1.0 + depth * 0.12
 			enemy.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 1.0)
 			add_child(enemy)
