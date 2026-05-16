@@ -200,7 +200,7 @@ func _spawn_enemies(platforms: Array) -> void:
 			add_child(enemy)
 		if depth > 2 and randf() < 0.30:
 			var enemy2 := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
-			enemy2.max_health = 3 + depth / 2
+			enemy2.max_health = 3 + int(depth / 2.0)
 			enemy2.fire_rate = 1.0 + depth * 0.12
 			enemy2.position = Vector2(plat["x"] + plat["w"] * 0.75, plat["y"] - 1.0)
 			add_child(enemy2)
