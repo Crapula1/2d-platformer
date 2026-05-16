@@ -27,7 +27,7 @@ func collect() -> int:
 		return 0
 	collected = true
 	# Pickup animation
-	var tween = create_tween()
+	var tween := create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(self, "scale", Vector2(2, 2), 0.2)
 	tween.tween_property(self, "modulate:a", 0.0, 0.2)

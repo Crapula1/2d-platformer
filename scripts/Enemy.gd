@@ -42,7 +42,7 @@ func _physics_process(delta: float) -> void:
 		floor_check.position.x = 18 * direction
 
 		# Check if we need to turn around
-		var distance_from_start = abs(global_position.x - start_position.x)
+		var distance_from_start: float = absf(global_position.x - start_position.x)
 		if distance_from_start > patrol_distance:
 			direction *= -1
 		elif wall_check.is_colliding():

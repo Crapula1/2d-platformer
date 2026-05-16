@@ -29,7 +29,7 @@ func _toggle() -> void:
 	_apply_state(true)
 	toggled.emit(is_on)
 	for path in connected_doors:
-		var door = get_node_or_null(path)
+		var door: Node = get_node_or_null(path)
 		if door == null:
 			continue
 		if is_on and door.has_method("open"):
