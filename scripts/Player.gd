@@ -47,7 +47,6 @@ var slide_cooldown_timer: float = 0.0
 var slide_dir: float = 1.0
 var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
-var _base_color := Color(0.3, 0.7, 1.0)
 
 signal health_changed(new_health: int, max: int)
 signal died()
@@ -64,7 +63,7 @@ var grenade_type: int = 0
 var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
 
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: AnimatedSprite2D = $Sprite
 @onready var stand_shape: CollisionShape2D = $CollisionShape2D
 @onready var crouch_shape: CollisionShape2D = $CrouchShape
 @onready var ceiling_ray: RayCast2D = $CeilingRay
@@ -255,14 +254,15 @@ func _start_attack() -> void:
 	attack_timer = attack_duration
 	attack_shape.disabled = false
 	attack_area.position.x = 20 if facing_right else -20
-	# Slide bash gets a fiery orange tint, normal bash gets yellow
-	sprite.color = Color(1.0, 0.38, 0.08) if _slide_bash else Color(1.0, 0.85, 0.2)
+	var tint := Color(1.0, 0.38, 0.08) if _slide_bash else Color(1.0, 0.85, 0.2)
+	tint.a = sprite.modulate.a
+	sprite.modulate = tint
 
 func _end_attack() -> void:
 	is_attacking = false
 	_slide_bash = false
 	attack_shape.disabled = true
-	sprite.color = _get_base_color()
+	sprite.modulate = _get_base_modulate()
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
@@ -295,7 +295,7 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 	if type == "shield":
 		is_invincible = true
 		invincibility_timer = duration
-	sprite.color = _get_base_color()
+	sprite.modulate = _get_base_modulate()
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_invincible or is_dead:
@@ -314,40 +314,49 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 func _die() -> void:
 	is_dead = true
-	sprite.color = Color(0.45, 0.45, 0.45)
+	sprite.stop()
+	sprite.modulate = Color(0.5, 0.5, 0.5)
 	emit_signal("died")
 
 func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)
 	emit_signal("health_changed", current_health, max_health)
 
-func _get_base_color() -> Color:
+func _get_base_modulate() -> Color:
 	if "damage" in active_buffs: return Color(1.0, 0.55, 0.1)
 	if "speed"  in active_buffs: return Color(0.3, 0.6, 1.0)
 	if "shield" in active_buffs: return Color(0.65, 0.3, 1.0)
-	return _base_color
+	return Color.WHITE
 
 func _update_sprite(delta: float) -> void:
 	if not is_attacking:
-		sprite.color = _get_base_color()
+		var base := _get_base_modulate()
+		base.a = sprite.modulate.a
+		sprite.modulate = base
+
+	sprite.flip_h = not facing_right
+
+	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
+	if sprite.animation != anim:
+		sprite.play(anim)
 
 	var target_scale: Vector2
 	var target_y: float
 
 	if is_sliding:
-		target_scale = Vector2(1.35, 0.4)
+		target_scale = Vector2(0.405, 0.12)
 		target_y = 8.4
 	elif is_crouching:
-		target_scale = Vector2(1.12, 0.52)
+		target_scale = Vector2(0.336, 0.156)
 		target_y = 6.7
 	elif is_attacking:
-		target_scale = Vector2(1.28, 1.0)
+		target_scale = Vector2(0.384, 0.3)
 		target_y = 0.0
 	elif not is_on_floor():
-		target_scale = Vector2(0.88, 1.15) if velocity.y < 0 else Vector2(1.12, 0.88)
+		target_scale = Vector2(0.264, 0.345) if velocity.y < 0 else Vector2(0.336, 0.264)
 		target_y = 0.0
 	else:
-		target_scale = Vector2.ONE
+		target_scale = Vector2(0.3, 0.3)
 		target_y = 0.0
 
 	var t := minf(delta * 22.0, 1.0)
@@ -355,4 +364,4 @@ func _update_sprite(delta: float) -> void:
 	sprite.position.y = lerpf(sprite.position.y, target_y, t)
 
 func _spawn_double_jump_effect() -> void:
-	sprite.scale = Vector2(1.3, 0.7)
+	sprite.scale = Vector2(0.39, 0.21)
