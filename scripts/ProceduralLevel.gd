@@ -111,8 +111,8 @@ func _spawn_background(pal: Dictionary) -> void:
 # Ground and perimeter walls
 # ---------------------------------------------------------------------------
 func _spawn_ground_and_walls(pal: Dictionary) -> void:
-	var gc := pal["ground"]
-	var wc := pal["wall"]
+	var gc: Color = pal["ground"]
+	var wc: Color = pal["wall"]
 
 	var gsb := StaticBody2D.new()
 	gsb.collision_layer = 1
@@ -245,8 +245,8 @@ func _maybe_add_pillar(plat: Dictionary, color: Color) -> void:
 	if randf() >= 0.40:
 		return
 	var pw := 16.0
-	var px := plat["x"] + plat["w"] * 0.5 - pw * 0.5
-	var pt := plat["y"] + float(PLAT_H)
+	var px: float = plat["x"] + plat["w"] * 0.5 - pw * 0.5
+	var pt: float = plat["y"] + float(PLAT_H)
 	_add_wall_pillar(px, pt, pw, float(GROUND_Y) - pt, color)
 
 func _maybe_add_corridor(gap_start: float, gap_end: float, plat_y: float, color: Color) -> void:
@@ -295,7 +295,7 @@ func _spawn_platforms(depth: int, pal: Dictionary) -> Array:
 			_make_break_platform(cur_x, cur_y, w, pal["brk"])
 		else:
 			var shade := randf_range(0.0, 0.07)
-			var bc := pal["plat"]
+			var bc: Color = pal["plat"]
 			_make_platform(cur_x, cur_y, w, Color(bc.r + shade, bc.g + shade, bc.b + shade))
 
 		var pd := {"x": cur_x, "y": cur_y, "w": w}
