@@ -32,6 +32,11 @@ class_name Player
 # Sprint
 @export var sprint_multiplier: float = 1.65
 
+# Shooting
+@export var bullet_speed: float = 500.0
+@export var shoot_cooldown: float = 0.18
+@export var bullet_damage: int = 1
+
 # Wall run
 @export var wall_slide_gravity_scale: float = 0.08
 @export var wall_slide_max_fall: float = 55.0
@@ -66,12 +71,14 @@ signal grenade_changed(type_name: String)
 var score: int = 0
 
 const GRENADE_SCENE := preload("res://scenes/Grenade.tscn")
+const PLAYER_BULLET_SCENE := preload("res://scenes/PlayerBullet.tscn")
 const GRENADE_NAMES := ["Explosive", "Incendiary", "Electric"]
 @export var throw_force: float = 310.0
 
 var grenade_type: int = 0
 var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
+var _shoot_timer: float = 0.0
 
 @onready var sprite: AnimatedSprite2D = $Sprite
 @onready var stand_shape: CollisionShape2D = $CollisionShape2D
@@ -109,6 +116,7 @@ func _physics_process(delta: float) -> void:
 	_handle_horizontal_movement(delta)
 	_handle_attack_input()
 	_handle_grenade_input()
+	_handle_shoot_input()
 	_handle_jump_logic()
 
 	move_and_slide()
@@ -130,6 +138,8 @@ func _update_timers(delta: float) -> void:
 		slide_cooldown_timer -= delta
 	if _grenade_cooldown > 0:
 		_grenade_cooldown -= delta
+	if _shoot_timer > 0:
+		_shoot_timer -= delta
 	if is_sliding:
 		slide_timer -= delta
 		if slide_timer <= 0:
@@ -403,6 +413,25 @@ func _update_sprite(delta: float) -> void:
 	var t := minf(delta * 22.0, 1.0)
 	sprite.scale = sprite.scale.lerp(target_scale, t)
 	sprite.position.y = lerpf(sprite.position.y, target_y, t)
+
+func _handle_shoot_input() -> void:
+	if is_dead or _shoot_timer > 0:
+		return
+	if Input.is_action_pressed("shoot"):
+		_shoot()
+		_shoot_timer = shoot_cooldown
+
+func _shoot() -> void:
+	var mouse_pos := get_global_mouse_position()
+	var muzzle := global_position + Vector2(18.0 if facing_right else -18.0, -8.0)
+	var dir := (mouse_pos - muzzle).normalized()
+	facing_right = dir.x >= 0.0
+
+	var bullet := PLAYER_BULLET_SCENE.instantiate()
+	get_parent().add_child(bullet)
+	bullet.global_position = muzzle
+	bullet.setup(dir, bullet_speed, bullet_damage)
+	sprite.scale = Vector2(0.26, 0.34)
 
 func _spawn_double_jump_effect() -> void:
 	sprite.scale = Vector2(0.39, 0.21)

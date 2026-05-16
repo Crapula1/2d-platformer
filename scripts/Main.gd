@@ -63,7 +63,7 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD/Arrows: Move  |  SPACE/W: Jump (double jump!)  |  J/Click: Attack  |  G: Grenade  |  Tab: Cycle Grenade  |  R: Restart"
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Tab: Cycle  |  R: Restart"
 
 func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
