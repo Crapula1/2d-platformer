@@ -13,6 +13,7 @@ const RANGE_SOLDIER_SCENE    := preload("res://scenes/RangeSoldier.tscn")
 const COIN_SCENE             := preload("res://scenes/Coin.tscn")
 const POWERUP_SCENE          := preload("res://scenes/PowerUp.tscn")
 const GRENADE_PICKUP_SCENE   := preload("res://scenes/GrenadePickup.tscn")
+const SPIKE_SCENE            := preload("res://scenes/Spike.tscn")
 const EXIT_DOOR_SCENE        := preload("res://scenes/ExitDoor.tscn")
 const PLAYER_SCENE           := preload("res://scenes/Player.tscn")
 const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
@@ -90,7 +91,7 @@ func _generate_world(num_rooms: int, depth: int, theme: Dictionary) -> void:
 				var raise: float = clampf(float(depth) * 0.18, 0.0, 0.72)
 				door_right_y = lerpf(floor_rel - float(DOOR_H) * 0.5, 160.0, t * raise)
 
-		var room := _build_room(i, offset, door_left_y, door_right_y, is_last, depth, theme)
+		var room := _build_room(i, offset, door_left_y, door_right_y, is_last, depth, theme, num_rooms)
 		room["door_right_y"] = door_right_y
 		_rooms.append(room)
 
@@ -102,24 +103,63 @@ func _generate_world(num_rooms: int, depth: int, theme: Dictionary) -> void:
 			pl.partner = pr
 
 func _build_room(idx: int, offset: Vector2, door_left_y: float, door_right_y: float,
-		is_last: bool, depth: int, theme: Dictionary) -> Dictionary:
+		is_last: bool, depth: int, theme: Dictionary, num_rooms: int) -> Dictionary:
+	var room_type := _pick_room_type(idx, num_rooms, depth, is_last)
+	var pit_list: Array = _gen_floor_pits(offset, room_type)
 	var room: Dictionary = {
 		"offset": offset,
 		"portal_left": null,
 		"portal_right": null,
 		"door_right_y": door_right_y,
+		"type": room_type,
 	}
 	_build_room_bg(offset, theme)
-	_build_room_geometry(idx, offset, door_left_y, door_right_y, theme, room)
-	var plats := _build_room_platforms(idx, offset, depth, theme)
+	_build_room_geometry(idx, offset, door_left_y, door_right_y, theme, room, pit_list)
+	var plats := _build_platforms_for_type(idx, offset, depth, theme, room_type)
 	room["platforms"] = plats
 	_build_wall_columns(offset, theme)
 	_add_env_deco(offset, theme)
-	_spawn_room_enemies(plats, depth, idx == 0)
-	_spawn_room_collectibles(plats)
+	_spawn_pit_spikes(offset, pit_list)
+	_spawn_room_enemies(plats, depth, idx == 0, room_type)
+	_spawn_room_collectibles(plats, room_type)
 	if is_last:
 		_spawn_exit_in_room(plats)
 	return room
+
+func _pick_room_type(idx: int, num_rooms: int, depth: int, is_last: bool) -> String:
+	if idx == 0:
+		return "start"
+	if is_last:
+		return "final"
+	if depth == 0 or num_rooms <= 3:
+		return "normal"
+	var roll := randf()
+	if roll < 0.30:
+		return "normal"
+	elif roll < 0.55:
+		return "climb"
+	elif roll < 0.75:
+		return "arena"
+	else:
+		return "gauntlet"
+
+func _gen_floor_pits(offset: Vector2, room_type: String) -> Array:
+	var pits: Array = []
+	var left: float = offset.x + float(WALL_W) + 90.0
+	var right: float = offset.x + float(ROOM_W - WALL_W) - 90.0
+	match room_type:
+		"arena":
+			var cx: float = offset.x + float(ROOM_W) * 0.5
+			pits.append({"x": cx - 38.0, "w": 76.0})
+		"gauntlet":
+			var section: float = (right - left) / 3.0
+			for i in range(3):
+				var px: float = left + float(i) * section + randf_range(8.0, section - 55.0)
+				pits.append({"x": px, "w": randf_range(42.0, 60.0)})
+		"final":
+			var px: float = left + randf_range(0.0, (right - left) * 0.35)
+			pits.append({"x": px, "w": 58.0})
+	return pits
 
 # ---------------------------------------------------------------------------
 # Background
@@ -162,23 +202,26 @@ func _build_room_bg(offset: Vector2, theme: Dictionary) -> void:
 # Walls, floor, ceiling
 # ---------------------------------------------------------------------------
 func _build_room_geometry(idx: int, offset: Vector2, door_left_y: float, door_right_y: float,
-		theme: Dictionary, room: Dictionary) -> void:
+		theme: Dictionary, room: Dictionary, pit_list: Array) -> void:
 	var wc: Color = theme["wall"]
 	var gc: Color = theme["ground"]
 
 	_make_solid_rect(offset + Vector2(float(WALL_W), 0.0),
 			float(ROOM_W - WALL_W * 2), float(CEIL_H), wc)
 
-	_make_solid_rect(offset + Vector2(float(WALL_W), float(ROOM_H - FLOOR_H)),
-			float(ROOM_W - WALL_W * 2), float(FLOOR_H), gc)
-	var fhl := ColorRect.new()
-	fhl.offset_left   = offset.x + float(WALL_W)
-	fhl.offset_top    = offset.y + float(ROOM_H - FLOOR_H)
-	fhl.offset_right  = offset.x + float(ROOM_W - WALL_W)
-	fhl.offset_bottom = offset.y + float(ROOM_H - FLOOR_H) + 3.0
-	fhl.color = Color(gc.r + 0.07, gc.g + 0.07, gc.b + 0.07)
-	fhl.z_index = 1
-	add_child(fhl)
+	# Floor in segments around pits
+	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
+	var cur_x: float = offset.x + float(WALL_W)
+	var floor_end: float = offset.x + float(ROOM_W - WALL_W)
+	var sorted_pits: Array = pit_list.duplicate()
+	sorted_pits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["x"] < b["x"])
+	for pit: Dictionary in sorted_pits:
+		var px: float = pit["x"]
+		if cur_x < px:
+			_build_floor_seg(cur_x, floor_y, px - cur_x, gc)
+		cur_x = px + float(pit["w"])
+	if cur_x < floor_end:
+		_build_floor_seg(cur_x, floor_y, floor_end - cur_x, gc)
 
 	if door_left_y > 0.0:
 		_build_wall_with_door(idx, offset, true, door_left_y, wc, room)
@@ -190,6 +233,15 @@ func _build_room_geometry(idx: int, offset: Vector2, door_left_y: float, door_ri
 	else:
 		_make_solid_rect(Vector2(offset.x + float(ROOM_W - WALL_W), offset.y),
 				float(WALL_W), float(ROOM_H), wc)
+
+func _build_floor_seg(x: float, y: float, w: float, gc: Color) -> void:
+	_make_solid_rect(Vector2(x, y), w, float(FLOOR_H), gc)
+	var fhl := ColorRect.new()
+	fhl.offset_left = x; fhl.offset_top = y
+	fhl.offset_right = x + w; fhl.offset_bottom = y + 3.0
+	fhl.color = Color(gc.r + 0.07, gc.g + 0.07, gc.b + 0.07)
+	fhl.z_index = 1
+	add_child(fhl)
 
 func _build_wall_with_door(room_idx: int, offset: Vector2, is_left: bool,
 		door_center_y: float, wc: Color, room: Dictionary) -> void:
@@ -273,9 +325,19 @@ func _make_solid_rect(pos: Vector2, w: float, h: float, color: Color) -> void:
 	sb.add_child(cs)
 
 # ---------------------------------------------------------------------------
-# Three-tier platform layout
+# Platform layout dispatcher + four room archetypes
 # ---------------------------------------------------------------------------
-func _build_room_platforms(room_idx: int, offset: Vector2, depth: int, theme: Dictionary) -> Array:
+func _build_platforms_for_type(room_idx: int, offset: Vector2, depth: int,
+		theme: Dictionary, room_type: String) -> Array:
+	match room_type:
+		"climb":    return _build_platforms_climb(room_idx, offset, depth, theme)
+		"arena":    return _build_platforms_arena(room_idx, offset, depth, theme)
+		"gauntlet": return _build_platforms_gauntlet(room_idx, offset, depth, theme)
+		"final":    return _build_platforms_final(room_idx, offset, depth, theme)
+		_:          return _build_platforms_normal(room_idx, offset, depth, theme)
+
+# Standard zigzag three-tier layout
+func _build_platforms_normal(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
 	var plats: Array = []
 	var bc: Color = theme["plat"]
 	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
@@ -284,11 +346,14 @@ func _build_room_platforms(room_idx: int, offset: Vector2, depth: int, theme: Di
 	for tier in range(tier_lifts.size()):
 		var base_y: float = floor_y - tier_lifts[tier]
 		var n: int = randi_range(3, 4)
-		var cur_x: float = offset.x + float(WALL_W) + randf_range(30.0, 70.0)
+		# Zigzag: odd tiers start offset
+		var cur_x: float = offset.x + float(WALL_W) + randf_range(20.0, 60.0)
+		if tier % 2 == 1:
+			cur_x += 40.0
 
 		for _p in range(n):
-			var y: float = base_y + randf_range(-15.0, 15.0)
-			var w: float = randf_range(80.0, 140.0)
+			var y: float = base_y + randf_range(-18.0, 18.0)
+			var w: float = randf_range(70.0, 115.0)
 			if cur_x + w > offset.x + float(ROOM_W - WALL_W) - 20.0:
 				break
 
@@ -305,9 +370,118 @@ func _build_room_platforms(room_idx: int, offset: Vector2, depth: int, theme: Di
 			plats.append(pd)
 			_maybe_add_pillar(pd, theme["support"] as Color, floor_y)
 			_add_plat_deco(cur_x, y, w, theme)
+			cur_x += w + randf_range(65.0, 110.0)
 
-			cur_x += w + randf_range(55.0, 115.0)
+	return plats
 
+# Ascending staircase — rewards wall-jump skill
+func _build_platforms_climb(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
+	var plats: Array = []
+	var bc: Color = theme["plat"]
+	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
+	var steps: int = 7
+	var inner_w: float = float(ROOM_W - WALL_W * 2) - 60.0
+	var x_step: float = inner_w / float(steps - 1)
+	var y_start: float = floor_y - 80.0
+	var y_end: float = floor_y - 460.0
+
+	for i in range(steps):
+		var t: float = float(i) / float(steps - 1)
+		var x: float = offset.x + float(WALL_W) + 20.0 + float(i) * x_step
+		var y: float = lerpf(y_start, y_end, t) + randf_range(-12.0, 12.0)
+		var w: float = randf_range(65.0, 85.0)
+
+		var roll := randf() if room_idx > 0 else 1.0
+		if roll < 0.22 and i > 1 and i < steps - 1:
+			_make_moving_platform(x, y, w, theme["move"] as Color)
+		else:
+			var shade := randf_range(0.0, 0.05)
+			_make_platform(x, y, w, Color(bc.r + shade, bc.g + shade, bc.b + shade))
+
+		var pd := {"x": x, "y": y, "w": w}
+		plats.append(pd)
+		_add_plat_deco(x, y, w, theme)
+
+		# Wall-jump pillar between some steps
+		if i < steps - 1 and randf() < 0.40:
+			var pil_x := x + w + 6.0
+			var pil_h := randf_range(75.0, 130.0)
+			_add_wall_pillar(pil_x, y - pil_h + float(PLAT_H), 18.0, pil_h, theme["support"] as Color)
+
+	return plats
+
+# Combat showdown — central elevated platform guarded by enemies
+func _build_platforms_arena(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
+	var plats: Array = []
+	var bc: Color = theme["plat"]
+	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
+	var cx: float = offset.x + float(ROOM_W) * 0.5
+
+	# Central throne platform
+	var cw: float = randf_range(160.0, 200.0)
+	var cy: float = floor_y - randf_range(210.0, 270.0)
+	_make_platform(cx - cw * 0.5, cy, cw, bc)
+	var center_pd := {"x": cx - cw * 0.5, "y": cy, "w": cw}
+	plats.append(center_pd)
+	_add_plat_deco(cx - cw * 0.5, cy, cw, theme)
+
+	# Left flank (lower)
+	var lw := 85.0
+	var ly := floor_y - randf_range(90.0, 135.0)
+	var lx := offset.x + float(WALL_W) + 18.0
+	_make_platform(lx, ly, lw, Color(bc.r - 0.02, bc.g - 0.02, bc.b - 0.02))
+	plats.append({"x": lx, "y": ly, "w": lw})
+	_add_plat_deco(lx, ly, lw, theme)
+
+	# Right flank (lower)
+	var rw := 85.0
+	var ry := floor_y - randf_range(90.0, 135.0)
+	var rx := offset.x + float(ROOM_W - WALL_W) - 18.0 - rw
+	_make_platform(rx, ry, rw, Color(bc.r - 0.02, bc.g - 0.02, bc.b - 0.02))
+	plats.append({"x": rx, "y": ry, "w": rw})
+	_add_plat_deco(rx, ry, rw, theme)
+
+	# High sniper perch on one side
+	if randf() < 0.65:
+		var hw := 65.0
+		var hy := floor_y - randf_range(340.0, 420.0)
+		var hx: float = lx if randf() < 0.5 else rx
+		_make_platform(hx, hy, hw, bc)
+		plats.append({"x": hx, "y": hy, "w": hw})
+		_add_plat_deco(hx, hy, hw, theme)
+		_add_wall_pillar(hx + hw * 0.5 - 9.0, hy + float(PLAT_H), 18.0, floor_y - hy - float(PLAT_H), theme["support"] as Color)
+
+	return plats
+
+# Moving-platform obstacle course over pits
+func _build_platforms_gauntlet(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
+	var plats: Array = []
+	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
+	var inner_w: float = float(ROOM_W - WALL_W * 2) - 40.0
+	var count: int = 6
+	var mc: Color = theme["move"]
+	var heights: Array[float] = [85.0, 175.0, 255.0, 145.0, 315.0, 205.0]
+
+	for i in range(count):
+		var x: float = offset.x + float(WALL_W) + 20.0 + (inner_w / float(count)) * float(i) + randf_range(-8.0, 8.0)
+		var y: float = floor_y - heights[i % heights.size()] + randf_range(-18.0, 18.0)
+		var w: float = randf_range(55.0, 80.0)
+		_make_moving_platform(x, y, w, mc)
+		plats.append({"x": x, "y": y, "w": w})
+
+	return plats
+
+# Hardest room before floor exit
+func _build_platforms_final(room_idx: int, offset: Vector2, depth: int, theme: Dictionary) -> Array:
+	var plats: Array = _build_platforms_normal(room_idx, offset, depth, theme)
+	# Add an extra high central platform for the exit door
+	var bc: Color = theme["plat"]
+	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
+	var ex: float = offset.x + float(ROOM_W) * 0.5 - 60.0
+	var ey: float = floor_y - 430.0
+	_make_platform(ex, ey, 120.0, bc)
+	plats.append({"x": ex, "y": ey, "w": 120.0})
+	_add_plat_deco(ex, ey, 120.0, theme)
 	return plats
 
 # ---------------------------------------------------------------------------
@@ -334,27 +508,100 @@ func _build_wall_columns(offset: Vector2, theme: Dictionary) -> void:
 		_add_wall_pillar(cx, floor_y - col_h, 20.0, col_h, theme["support"] as Color)
 
 # ---------------------------------------------------------------------------
+# Spikes at pit edges
+# ---------------------------------------------------------------------------
+func _spawn_pit_spikes(offset: Vector2, pit_list: Array) -> void:
+	var floor_y := offset.y + float(ROOM_H - FLOOR_H)
+	for pit: Dictionary in pit_list:
+		# Spike cluster left of pit (on solid floor tile)
+		var ls := SPIKE_SCENE.instantiate() as StaticBody2D
+		ls.position = Vector2(pit["x"] - 16.0, floor_y)
+		add_child(ls)
+		# Spike cluster right of pit
+		var rs := SPIKE_SCENE.instantiate() as StaticBody2D
+		rs.position = Vector2(pit["x"] + float(pit["w"]) + 16.0, floor_y)
+		add_child(rs)
+
+# ---------------------------------------------------------------------------
 # Enemies, collectibles, exit
 # ---------------------------------------------------------------------------
-func _spawn_room_enemies(plats: Array, depth: int, is_first_room: bool) -> void:
-	for i in range(plats.size()):
-		if is_first_room and i == 0:
-			continue
-		var plat: Dictionary = plats[i] as Dictionary
-		if randf() < 0.55:
-			var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
-			e.max_health = 3 + int(depth / 2.0)
-			e.fire_rate = 1.0 + depth * 0.12
-			e.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 1.0)
-			add_child(e)
-		if depth > 2 and randf() < 0.25:
-			var e2 := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
-			e2.max_health = 3 + int(depth / 2.0)
-			e2.fire_rate = 1.0 + depth * 0.12
-			e2.position = Vector2(plat["x"] + plat["w"] * 0.75, plat["y"] - 1.0)
-			add_child(e2)
+func _spawn_room_enemies(plats: Array, depth: int, is_first_room: bool, room_type: String) -> void:
+	if is_first_room:
+		return
+	var hp := 3 + int(depth / 2.0)
+	var fr := 1.0 + depth * 0.12
+	match room_type:
+		"arena":
+			# Pack the central platform, one guard on each flank
+			for i in range(plats.size()):
+				var plat: Dictionary = plats[i]
+				var count := 3 if i == 0 else 1
+				for c in range(count):
+					var ex: float = plat["x"] + plat["w"] * (0.25 + float(c) * 0.25)
+					if ex > plat["x"] + plat["w"] - 10.0:
+						break
+					var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e.max_health = hp + 1
+					e.fire_rate = fr
+					e.position = Vector2(ex, plat["y"] - 1.0)
+					add_child(e)
+		"gauntlet":
+			# Few weak enemies — platforming is the real challenge
+			for plat: Dictionary in plats:
+				if randf() < 0.40:
+					var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e.max_health = maxi(1, hp - 1)
+					e.fire_rate = fr * 0.75
+					e.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 1.0)
+					add_child(e)
+		"climb":
+			# Enemies guarding the middle steps, none at top or bottom
+			for i in range(plats.size()):
+				var plat: Dictionary = plats[i]
+				if i > 0 and i < plats.size() - 2 and randf() < 0.55:
+					var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e.max_health = hp
+					e.fire_rate = fr
+					e.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 1.0)
+					add_child(e)
+		"final":
+			# Dense enemies, tougher stats
+			for plat: Dictionary in plats:
+				var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+				e.max_health = hp + 2
+				e.fire_rate = fr * 1.25
+				e.position = Vector2(plat["x"] + plat["w"] * 0.35, plat["y"] - 1.0)
+				add_child(e)
+				if randf() < 0.50:
+					var e2 := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e2.max_health = hp + 2
+					e2.fire_rate = fr * 1.25
+					e2.position = Vector2(plat["x"] + plat["w"] * 0.70, plat["y"] - 1.0)
+					add_child(e2)
+		_: # normal / start
+			for plat: Dictionary in plats:
+				if randf() < 0.55:
+					var e := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e.max_health = hp
+					e.fire_rate = fr
+					e.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 1.0)
+					add_child(e)
+				if depth > 2 and randf() < 0.28:
+					var e2 := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
+					e2.max_health = hp
+					e2.fire_rate = fr
+					e2.position = Vector2(plat["x"] + plat["w"] * 0.75, plat["y"] - 1.0)
+					add_child(e2)
 
-func _spawn_room_collectibles(plats: Array) -> void:
+func _spawn_room_collectibles(plats: Array, room_type: String) -> void:
+	var pu_chance: float
+	match room_type:
+		"start":    pu_chance = 0.80
+		"arena":    pu_chance = 0.55
+		"gauntlet": pu_chance = 0.12
+		"final":    pu_chance = 0.65
+		_:          pu_chance = 0.30
+
 	var grenade_spawned := false
 	for plat: Dictionary in plats:
 		var cn: int = randi_range(1, 3)
@@ -362,7 +609,7 @@ func _spawn_room_collectibles(plats: Array) -> void:
 			var coin := COIN_SCENE.instantiate()
 			coin.position = Vector2(plat["x"] + (plat["w"] / float(cn + 1)) * float(c + 1), plat["y"] - 16.0)
 			add_child(coin)
-		if randf() < 0.30:
+		if randf() < pu_chance:
 			var pu := POWERUP_SCENE.instantiate() as PowerUp
 			pu.type = PowerUp.Type.values()[randi() % 4]
 			pu.position = Vector2(plat["x"] + plat["w"] * 0.5, plat["y"] - 24.0)
