@@ -2,17 +2,56 @@
 
 [ext_resource type="Script" path="res://scripts/Spike.gd" id="1_spike"]
 
-[sub_resource type="ConvexPolygonShape2D" id="ConvexPolygonShape2D_spike"]
-points = PackedVector2Array(-14, 8, 14, 8, 0, -8)
+[sub_resource type="ConvexPolygonShape2D" id="ConvexPolygonShape2D_spike_body"]
+points = PackedVector2Array(-16, 8, 16, 8, 16, 2, -16, 2)
 
-[node name="Spike" type="Area2D" groups=["hazard"]]
-collision_layer = 16
-collision_mask = 2
+[node name="Spike" type="StaticBody2D"]
+collision_layer = 1
+collision_mask = 0
 script = ExtResource("1_spike")
 
 [node name="Sprite" type="Polygon2D" parent="."]
-color = Color(0.7, 0.2, 0.3, 1)
-polygon = PackedVector2Array(-14, 8, 14, 8, 0, -8)
+color = Color(0.75, 0.22, 0.3, 1)
+polygon = PackedVector2Array(-16, 8, -12, -10, -8, 4, -4, -12, 0, 4, 4, -12, 8, 4, 12, -10, 16, 8)
+
+[node name="SpriteHighlight1" type="Polygon2D" parent="."]
+color = Color(1, 0.55, 0.55, 1)
+polygon = PackedVector2Array(-12, -10, -11, -8, -13, 5, -14, 6)
+
+[node name="SpriteHighlight2" type="Polygon2D" parent="."]
+color = Color(1, 0.55, 0.55, 1)
+polygon = PackedVector2Array(-4, -12, -3, -10, -5, 4, -6, 5)
+
+[node name="SpriteHighlight3" type="Polygon2D" parent="."]
+color = Color(1, 0.55, 0.55, 1)
+polygon = PackedVector2Array(4, -12, 5, -10, 3, 4, 2, 5)
+
+[node name="SpriteHighlight4" type="Polygon2D" parent="."]
+color = Color(1, 0.55, 0.55, 1)
+polygon = PackedVector2Array(12, -10, 13, -8, 11, 5, 10, 6)
+
+[node name="SpriteBase" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = 2.0
+offset_right = 16.0
+offset_bottom = 8.0
+color = Color(0.45, 0.15, 0.2, 1)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("ConvexPolygonShape2D_spike")
+shape = SubResource("ConvexPolygonShape2D_spike_body")
+
+[node name="Hazard" type="Area2D" parent="." groups=["hazard"]]
+collision_layer = 16
+collision_mask = 2
+
+[node name="HazardShape1" type="CollisionPolygon2D" parent="Hazard"]
+polygon = PackedVector2Array(-14, 2, -12, -10, -10, 2)
+
+[node name="HazardShape2" type="CollisionPolygon2D" parent="Hazard"]
+polygon = PackedVector2Array(-6, 2, -4, -12, -2, 2)
+
+[node name="HazardShape3" type="CollisionPolygon2D" parent="Hazard"]
+polygon = PackedVector2Array(2, 2, 4, -12, 6, 2)
+
+[node name="HazardShape4" type="CollisionPolygon2D" parent="Hazard"]
+polygon = PackedVector2Array(10, 2, 12, -10, 14, 2)

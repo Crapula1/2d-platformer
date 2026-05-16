@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://proclevelxxxxx"]
+
+[ext_resource type="Script" path="res://scripts/ProceduralLevel.gd" id="1_proclevel"]
+
+[node name="ProceduralLevel" type="Node2D"]
+script = ExtResource("1_proclevel")

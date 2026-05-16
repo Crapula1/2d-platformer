@@ -1,12 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://cnmainxxxxxx"]
+[gd_scene load_steps=2 format=3 uid="uid://cnmainxxxxxx"]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="1_main"]
-[ext_resource type="PackedScene" uid="uid://cnlevelxxxxxx" path="res://scenes/Level.tscn" id="2_level"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
-
-[node name="Level" parent="." instance=ExtResource("2_level")]
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
