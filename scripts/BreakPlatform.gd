@@ -64,10 +64,17 @@ func _physics_process(delta: float) -> void:
 
 	if not _triggered:
 		for p: Node in get_tree().get_nodes_in_group("player"):
-			if p is CharacterBody2D and (p as CharacterBody2D).is_on_floor() \
-					and (p as CharacterBody2D).get_floor_body() == self:
-				_triggered = true
-				_timer = BREAK_DELAY
+			if not (p is CharacterBody2D):
+				continue
+			var cb := p as CharacterBody2D
+			if not cb.is_on_floor():
+				continue
+			for i in cb.get_slide_collision_count():
+				if cb.get_slide_collision(i).get_collider() == self:
+					_triggered = true
+					_timer = BREAK_DELAY
+					break
+			if _triggered:
 				break
 		return
 
