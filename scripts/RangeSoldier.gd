@@ -3,8 +3,8 @@ class_name RangeSoldier
 
 enum State { PATROL, ALERT, COMBAT, SUPPRESSED }
 
-@export var patrol_distance: float = 120.0
-@export var patrol_speed: float = 50.0
+@export var patrol_distance: float = 320.0
+@export var patrol_speed: float = 60.0
 @export var sight_range: float = 220.0
 @export var close_range: float = 52.0
 @export var max_health: int = 3
@@ -27,10 +27,23 @@ var fire_timer: float = 0.0
 var alert_timer: float = 0.0
 var stunned_timer: float = 0.0
 var visor_flash_timer: float = 0.0
+var walk_phase: float = 0.0
+var recoil: float = 0.0
+var flash_timer: float = 0.0
+var _gun_base_left: float = 0.0
+var _gun_base_right: float = 0.0
+var _muzzle_base_x: float = 0.0
+var _legl_base_y: float = 0.0
+var _legr_base_y: float = 0.0
+var _body_base_y: float = 0.0
 
 @onready var body_visual: Node2D = $Body
 @onready var visor: ColorRect = $Body/Visor
 @onready var gun_muzzle: Marker2D = $Body/GunMuzzle
+@onready var gun_visual: ColorRect = $Body/Gun
+@onready var muzzle_flash: Polygon2D = $Body/MuzzleFlash
+@onready var leg_l: ColorRect = $Body/LegL
+@onready var leg_r: ColorRect = $Body/LegR
 @onready var alert_indicator: Node2D = $AlertIndicator
 @onready var sight_ray: RayCast2D = $SightRay
 @onready var wall_check: RayCast2D = $WallCheck
@@ -41,6 +54,12 @@ func _ready() -> void:
 	start_position = global_position
 	add_to_group("enemy")
 	_find_player()
+	_gun_base_left = gun_visual.offset_left
+	_gun_base_right = gun_visual.offset_right
+	_muzzle_base_x = muzzle_flash.position.x
+	_legl_base_y = leg_l.offset_top
+	_legr_base_y = leg_r.offset_top
+	_body_base_y = body_visual.position.y
 
 func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
@@ -75,6 +94,14 @@ func _update_timers(delta: float) -> void:
 		fire_timer -= delta
 	if visor_flash_timer > 0:
 		visor_flash_timer -= delta
+	if flash_timer > 0:
+		flash_timer -= delta
+		if flash_timer <= 0:
+			muzzle_flash.visible = false
+	# Recoil decays smoothly
+	recoil = move_toward(recoil, 0.0, 30.0 * delta)
+	# Walk cycle phase advances with horizontal speed
+	walk_phase += delta * (absf(velocity.x) / 8.0 + 1.0)
 
 func _update_state() -> void:
 	if player == null or player.is_dead:
@@ -200,6 +227,13 @@ func _shoot(spread: float) -> void:
 
 	bullet.setup(shoot_dir, bullet_speed, bullet_damage)
 
+	# Shooting animation: kick the gun back, flash the muzzle, jolt the body.
+	recoil = 4.0
+	muzzle_flash.visible = true
+	muzzle_flash.scale = Vector2(1.0, randf_range(0.7, 1.3))
+	flash_timer = 0.06
+	velocity.x -= float(direction) * 30.0
+
 func _has_line_of_sight(dist: float) -> bool:
 	if player == null or dist > sight_range:
 		return false
@@ -258,6 +292,23 @@ func _die() -> void:
 
 func _update_visuals(delta: float) -> void:
 	body_visual.scale.x = float(direction)
+
+	# Walk cycle — alternate legs + slight body bob when moving on the ground.
+	var moving := absf(velocity.x) > 6.0 and is_on_floor()
+	if moving:
+		var s := sin(walk_phase * 6.0)
+		leg_l.offset_top = _legl_base_y - max(s, 0.0) * 3.0
+		leg_r.offset_top = _legr_base_y - max(-s, 0.0) * 3.0
+		body_visual.position.y = _body_base_y - absf(s) * 0.8
+	else:
+		leg_l.offset_top = lerpf(leg_l.offset_top, _legl_base_y, minf(delta * 15.0, 1.0))
+		leg_r.offset_top = lerpf(leg_r.offset_top, _legr_base_y, minf(delta * 15.0, 1.0))
+		body_visual.position.y = lerpf(body_visual.position.y, _body_base_y, minf(delta * 15.0, 1.0))
+
+	# Gun recoil — slides back along the barrel axis (local +x of body).
+	gun_visual.offset_left = _gun_base_left - recoil
+	gun_visual.offset_right = _gun_base_right - recoil
+	muzzle_flash.position.x = _muzzle_base_x - recoil
 
 	match state:
 		State.PATROL:

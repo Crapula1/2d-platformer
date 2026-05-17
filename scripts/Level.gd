@@ -433,7 +433,7 @@ func _add_break_platform(x: float, y: float, w: float) -> void:
 	bp.setup(x, y, w, COL_BREAK)
 	add_child(bp)
 
-func _add_soldier(x: float, y: float, patrol: float = 80.0, speed: float = -1.0) -> void:
+func _add_soldier(x: float, y: float, patrol: float = 320.0, speed: float = -1.0) -> void:
 	var s := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
 	s.position = Vector2(x, y)
 	s.patrol_distance = patrol
@@ -886,7 +886,7 @@ func _build_section_c_break_climb() -> void:
 	_add_platform(2010.0, 220.0, 96.0)
 
 	_add_soldier(1500.0, 375.0)
-	_add_soldier(1900.0, 375.0, 60.0)
+	_add_soldier(1900.0, 375.0, 180.0)
 
 # -----------------------------------------------------------------------------
 # Section D — Spike corridor (2100..2900): islands of ground separated by
@@ -925,8 +925,8 @@ func _build_section_d_spike_corridor() -> void:
 	# Overhead pipes for visual cohesion
 	_add_branch_h(2120.0, 80.0, 760.0)
 
-	_add_soldier(2450.0, 375.0, 60.0)
-	_add_soldier(2780.0, 375.0)
+	_add_soldier(2450.0, 375.0, 140.0)
+	_add_soldier(2780.0, 375.0, 200.0)
 
 # -----------------------------------------------------------------------------
 # Section E — Vertical climb (2900..3500): break-platforms up to a powerup
@@ -973,8 +973,8 @@ func _build_section_e_vertical_climb() -> void:
 	_add_platform(3520.0, 200.0, 96.0)
 	_add_coin(3568.0, 174.0)
 
-	_add_soldier(3050.0, 375.0)
-	_add_soldier(3350.0, 375.0, 60.0)
+	_add_soldier(3050.0, 375.0, 260.0)
+	_add_soldier(3350.0, 375.0, 220.0)
 
 # -----------------------------------------------------------------------------
 # Section F — Big pit gauntlet (3500..4500): a long spike pit traversed via
@@ -1072,9 +1072,9 @@ func _build_section_g_mixed_challenge() -> void:
 	_add_rock(5095.0, 378.0)
 	_add_rock(5095.0, 356.0)
 
-	_add_soldier(4560.0, 375.0)
-	_add_soldier(4880.0, 375.0, 60.0)
-	_add_soldier(5170.0, 375.0)
+	_add_soldier(4560.0, 375.0, 240.0)
+	_add_soldier(4880.0, 375.0, 200.0)
+	_add_soldier(5170.0, 375.0, 200.0)
 
 # -----------------------------------------------------------------------------
 # Section H — Final stretch (5200..6000): clear path, ceremonial visuals,
@@ -1109,9 +1109,9 @@ func _build_section_h_final_stretch() -> void:
 	_add_arrow_sign(5700.0, 378.0)
 
 	# Guard cluster at the exit — three soldiers, tighter patrols
-	_add_soldier(5320.0, 375.0, 50.0)
-	_add_soldier(5700.0, 375.0, 50.0)
-	_add_soldier(5840.0, 375.0, 30.0)
+	_add_soldier(5320.0, 375.0, 220.0)
+	_add_soldier(5700.0, 375.0, 220.0)
+	_add_soldier(5840.0, 375.0, 140.0)
 
 	# Final grenade resupply right before the exit
 	_add_grenade_pickup(5780.0, 366.0, 0)

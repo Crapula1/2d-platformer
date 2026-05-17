@@ -15,8 +15,15 @@ script = ExtResource("1_soldier")
 
 [node name="Body" type="Node2D" parent="."]
 
-[node name="Legs" type="ColorRect" parent="Body"]
+[node name="LegL" type="ColorRect" parent="Body"]
 offset_left = -6.0
+offset_top = 10.0
+offset_right = -1.0
+offset_bottom = 14.0
+color = Color(0.12, 0.15, 0.08, 1)
+
+[node name="LegR" type="ColorRect" parent="Body"]
+offset_left = 1.0
 offset_top = 10.0
 offset_right = 6.0
 offset_bottom = 14.0
@@ -73,6 +80,12 @@ color = Color(0.12, 0.12, 0.12, 1)
 
 [node name="GunMuzzle" type="Marker2D" parent="Body"]
 position = Vector2(22, -1)
+
+[node name="MuzzleFlash" type="Polygon2D" parent="Body"]
+position = Vector2(22, -1)
+visible = false
+color = Color(1.0, 0.9, 0.35, 1)
+polygon = PackedVector2Array(0, -3, 8, 0, 0, 3, 3, 0)
 
 [node name="AlertIndicator" type="Node2D" parent="."]
 position = Vector2(0, -22)
