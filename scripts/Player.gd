@@ -43,7 +43,12 @@ var _combo_window_timer: float = 0.0
 var _attack_buffered: bool = false
 var _axe: Node2D
 var _axe_pivot: Node2D
-var _axe_base_rotation: float = 0.0
+var _arm_front: Line2D
+var _arm_back: Line2D
+var _hand_front: ColorRect
+var _hand_back: ColorRect
+var _attack_swing_origin_rot: float = 0.0
+var _attack_swing_origin_thrust: float = 0.0
 
 # Slide
 @export var slide_speed: float = 270.0
@@ -60,11 +65,12 @@ var _axe_base_rotation: float = 0.0
 @export var shoot_cooldown: float = 0.18
 @export var bullet_damage: int = 1
 
-# Shooting — double-barrel shotgun (spread, double damage per pellet)
-@export var shotgun_pellet_count: int = 5
-@export var shotgun_spread: float = 0.32           # half-cone in radians (~18°)
-@export var shotgun_pellet_speed: float = 480.0
-@export var shotgun_pellet_range: float = 320.0
+# Shooting — double-barrel shotgun
+# Each pull fires a 2×2 grid of rifle-style pellets traveling in parallel.
+@export var shotgun_grid_lateral: float = 6.0      # perpendicular spread (px)
+@export var shotgun_grid_depth: float = 7.0        # along-axis stagger (px)
+@export var shotgun_pellet_speed: float = 500.0
+@export var shotgun_pellet_range: float = 480.0
 @export var shotgun_capacity: int = 2              # double-barrel
 @export var shotgun_barrel_interval: float = 0.18  # fast follow-up between barrels
 @export var shotgun_reload_time: float = 0.85      # crack-and-reload after both barrels
@@ -435,24 +441,38 @@ func _start_attack(stage: int) -> void:
 	_slide_bash = is_sliding
 	if is_sliding:
 		_end_slide()
+	var chaining: bool = _axe.visible
 	attack_stage = stage
 	is_attacking = true
 	var cfg: Dictionary = _stage_config(stage)
 	attack_timer = float(cfg["duration"])
 	attack_shape.disabled = false
-	# Stab has longer reach; cleave/smash use the normal swing range.
 	var reach: float = 28.0 if stage == 3 else 20.0
 	attack_area.position.x = reach if facing_right else -reach
-	# Slide-bash and stage-specific tint
 	var tint: Color = cfg["tint"]
 	if _slide_bash:
 		tint = Color(1.0, 0.38, 0.08)
 	tint.a = sprite.modulate.a
 	sprite.modulate = tint
-	# Show + reset the axe at this stage's starting pose.
+
+	# Anchor the axe at the marine's front hand. The first phase of each
+	# attack eases from the swing's origin pose to rot_start (the windup),
+	# the second phase eases through to rot_end (the strike).
+	if chaining:
+		_attack_swing_origin_rot = _axe_pivot.rotation
+		_attack_swing_origin_thrust = _axe_pivot.position.x
+	else:
+		# Fresh attack: drop in already at rot_start so there's no jump.
+		_attack_swing_origin_rot = float(cfg["rot_start"])
+		_attack_swing_origin_thrust = float(cfg["thrust_start"])
+		_axe_pivot.rotation = _attack_swing_origin_rot
+		_axe_pivot.position = Vector2(_attack_swing_origin_thrust, 0.0)
+
 	_axe.visible = true
-	_axe_pivot.rotation = float(cfg["rot_start"])
-	_axe_pivot.position = Vector2(float(cfg["thrust_start"]), -4.0)
+	_arm_front.visible = true
+	_arm_back.visible = true
+	_hand_front.visible = true
+	_hand_back.visible = true
 
 func _end_attack() -> void:
 	is_attacking = false
@@ -468,8 +488,12 @@ func _end_attack() -> void:
 	# pulls the trigger again within it, they continue the combo.
 	_attack_buffered = false
 	_combo_window_timer = combo_window
-	# Hide the axe between swings
+	# Hide the axe + arms between swings
 	_axe.visible = false
+	_arm_front.visible = false
+	_arm_back.visible = false
+	_hand_front.visible = false
+	_hand_back.visible = false
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
@@ -481,116 +505,176 @@ func _on_attack_hit(body: Node) -> void:
 		body.take_damage(dmg, global_position)
 
 func _stage_config(stage: int) -> Dictionary:
-	# Per-attack tuning. Rotations are radians; thrust is local x offset of
-	# the axe pivot point (used by Stab to lunge forward).
+	# Per-attack tuning. Rotation 0 = axe shaft straight up. Positive rot is
+	# clockwise in screen-space (with y-down), so +π/2 lays the shaft forward.
+	# Thrust = forward offset of the pivot (used by Stab to lunge).
 	match stage:
-		1:  # CLEAVE — wide horizontal arc, medium damage
+		1:  # CLEAVE — wide diagonal slash from up-and-back to down-and-forward
 			return {
-				"duration": 0.22,
+				"duration": 0.28,
 				"damage_mult": 1.0,
-				"rot_start": -1.9,
-				"rot_end":    0.6,
+				"rot_start":  -0.55,
+				"rot_end":     2.10,
 				"thrust_start": 0.0,
 				"thrust_end":   0.0,
 				"tint": Color(1.0, 0.85, 0.2),
 			}
-		2:  # SMASH — overhead vertical chop, big damage, heavier
+		2:  # SMASH — full overhead chop; big windup, heavy slam
 			return {
-				"duration": 0.32,
+				"duration": 0.38,
 				"damage_mult": 1.6,
-				"rot_start": -2.6,
-				"rot_end":    1.3,
+				"rot_start":  -1.65,
+				"rot_end":     2.45,
 				"thrust_start": 0.0,
-				"thrust_end":   2.0,
+				"thrust_end":   3.0,
 				"tint": Color(1.0, 0.55, 0.10),
 			}
-		3:  # STAB — fast forward thrust, long reach, lower damage
+		3:  # STAB — pivot stays horizontal forward; lunge with thrust offset
 			return {
-				"duration": 0.18,
+				"duration": 0.22,
 				"damage_mult": 0.9,
-				"rot_start": -0.10,
-				"rot_end":   -0.10,
-				"thrust_start": 4.0,
-				"thrust_end":  18.0,
+				"rot_start":  1.55,
+				"rot_end":    1.55,
+				"thrust_start": 0.0,
+				"thrust_end":  22.0,
 				"tint": Color(1.0, 0.95, 0.55),
 			}
 		_:
 			return {
 				"duration": attack_duration,
 				"damage_mult": 1.0,
-				"rot_start": -1.9,
-				"rot_end":    0.6,
+				"rot_start":  -0.55,
+				"rot_end":     2.10,
 				"thrust_start": 0.0,
 				"thrust_end":   0.0,
 				"tint": Color(1.0, 0.85, 0.2),
 			}
 
 func _build_axe() -> void:
-	# A 2-handed battle axe drawn as a few polygons. Pivots at the grip so
-	# rotation animates around the player's hand. Hidden until an attack starts.
+	# A 2-handed battle axe drawn from polygons. Pivot sits at the front
+	# (lower) hand grip so rotation visually pivots around the marine's hand.
+	# Shaft extends UP from the pivot; the head sits at the top.
 	_axe = Node2D.new()
 	_axe.z_index = 2
 	_axe.visible = false
 	add_child(_axe)
 
 	_axe_pivot = Node2D.new()
-	_axe_pivot.position = Vector2(0.0, -4.0)
 	_axe.add_child(_axe_pivot)
 
-	# Shaft (haft)
+	# Shaft (haft) — goes from grip (y=0) up to head (y=-26)
 	var shaft := Polygon2D.new()
 	shaft.color = Color(0.34, 0.22, 0.12)
 	shaft.polygon = PackedVector2Array([
-		Vector2(-1.4, 0.0), Vector2(1.4, 0.0),
-		Vector2(1.6, 30.0), Vector2(-1.6, 30.0),
+		Vector2(-1.4,   0.0), Vector2(1.4,  0.0),
+		Vector2(1.4, -26.0), Vector2(-1.4, -26.0),
 	])
 	_axe_pivot.add_child(shaft)
 
-	# Grip wrap near the bottom
+	# Grip wrap at the bottom (where the front hand grabs)
 	var grip := Polygon2D.new()
 	grip.color = Color(0.10, 0.08, 0.06)
 	grip.polygon = PackedVector2Array([
-		Vector2(-2.0, 4.0), Vector2(2.0, 4.0),
-		Vector2(2.0, 11.0), Vector2(-2.0, 11.0),
+		Vector2(-2.0, -2.0), Vector2(2.0, -2.0),
+		Vector2(2.0,  3.0), Vector2(-2.0, 3.0),
 	])
 	_axe_pivot.add_child(grip)
 
-	# Pommel
+	# Upper shaft wrap (where the back hand grabs)
+	var grip2 := Polygon2D.new()
+	grip2.color = Color(0.10, 0.08, 0.06)
+	grip2.polygon = PackedVector2Array([
+		Vector2(-2.0, -16.0), Vector2(2.0, -16.0),
+		Vector2(2.0, -12.0), Vector2(-2.0, -12.0),
+	])
+	_axe_pivot.add_child(grip2)
+
+	# Pommel below the grip
 	var pommel := Polygon2D.new()
 	pommel.color = Color(0.55, 0.55, 0.60)
 	pommel.polygon = PackedVector2Array([
-		Vector2(-2.2, 30.0), Vector2(2.2, 30.0),
-		Vector2(1.6, 33.0), Vector2(-1.6, 33.0),
+		Vector2(-2.4, 3.0), Vector2(2.4, 3.0),
+		Vector2(2.0, 6.0), Vector2(-2.0, 6.0),
 	])
 	_axe_pivot.add_child(pommel)
 
-	# Axe head — two-sided, the right side bigger for "primary" blade
+	# Axe head — asymmetric so the "primary" blade leans forward
 	var head := Polygon2D.new()
 	head.color = Color(0.72, 0.74, 0.80)
 	head.polygon = PackedVector2Array([
-		Vector2(-7.0, -3.0), Vector2(0.0, -7.0),
-		Vector2(11.0, -8.0), Vector2(15.0, -2.0),
-		Vector2(11.0,  4.0), Vector2(0.0,  3.0),
-		Vector2(-7.0, 1.0),
+		Vector2(-6.0, -22.0), Vector2(0.0, -29.0),
+		Vector2(13.0, -30.0), Vector2(16.0, -25.0),
+		Vector2(13.0, -19.0), Vector2(0.0, -20.0),
+		Vector2(-6.0, -23.0),
 	])
 	_axe_pivot.add_child(head)
 
-	# Edge highlight
+	# Edge highlight on the bit
 	var edge := Polygon2D.new()
 	edge.color = Color(0.92, 0.95, 1.0)
 	edge.polygon = PackedVector2Array([
-		Vector2(9.0, -7.0), Vector2(15.0, -2.0), Vector2(11.0, 4.0),
+		Vector2(11.0, -30.0), Vector2(16.0, -25.0), Vector2(13.0, -19.0),
 	])
 	_axe_pivot.add_child(edge)
 
-	# Trim band on the head
+	# Back spike (small) opposite the bit
+	var spike := Polygon2D.new()
+	spike.color = Color(0.55, 0.55, 0.60)
+	spike.polygon = PackedVector2Array([
+		Vector2(-6.0, -23.0), Vector2(-6.0, -22.0),
+		Vector2(-10.0, -25.0),
+	])
+	_axe_pivot.add_child(spike)
+
+	# Trim band where head meets shaft
 	var trim := Polygon2D.new()
 	trim.color = Color(0.42, 0.32, 0.18)
 	trim.polygon = PackedVector2Array([
-		Vector2(-3.0, -3.0), Vector2(0.0, -3.0),
-		Vector2(0.0, 3.0), Vector2(-3.0, 3.0),
+		Vector2(-2.5, -22.0), Vector2(2.5, -22.0),
+		Vector2(2.5, -18.0), Vector2(-2.5, -18.0),
 	])
 	_axe_pivot.add_child(trim)
+
+	# --- Arms — two procedural arms that anchor at the marine's shoulders and
+	# always point at the axe's grip points so it visibly looks held.
+	_arm_back = Line2D.new()
+	_arm_back.width = 3.2
+	_arm_back.default_color = Color(0.20, 0.30, 0.13)
+	_arm_back.z_index = 1
+	_arm_back.visible = false
+	_arm_back.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_arm_back.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_arm_back.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
+	add_child(_arm_back)
+
+	_arm_front = Line2D.new()
+	_arm_front.width = 3.4
+	_arm_front.default_color = Color(0.24, 0.36, 0.16)
+	_arm_front.z_index = 3
+	_arm_front.visible = false
+	_arm_front.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_arm_front.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_arm_front.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
+	add_child(_arm_front)
+
+	# Small hand rects at the grip points so the joint reads
+	_hand_back = ColorRect.new()
+	_hand_back.color = Color(0.90, 0.78, 0.62)
+	_hand_back.offset_left = -2.0; _hand_back.offset_top = -2.0
+	_hand_back.offset_right = 2.0; _hand_back.offset_bottom = 2.0
+	_hand_back.z_index = 3
+	_hand_back.visible = false
+	_hand_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hand_back)
+
+	_hand_front = ColorRect.new()
+	_hand_front.color = Color(0.95, 0.82, 0.66)
+	_hand_front.offset_left = -2.0; _hand_front.offset_top = -2.0
+	_hand_front.offset_right = 2.0; _hand_front.offset_bottom = 2.0
+	_hand_front.z_index = 4
+	_hand_front.visible = false
+	_hand_front.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hand_front)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
@@ -674,22 +758,56 @@ func _update_sprite(delta: float) -> void:
 
 	sprite.flip_h = facing_right
 
-	# Animate the axe through its stage arc — and flip it with facing direction
-	# so the swing reads the same whether the marine is facing left or right.
+	# Animate the axe through its swing — windup back, then strike forward.
 	if is_attacking:
 		var cfg: Dictionary = _stage_config(attack_stage)
 		var dur: float = float(cfg["duration"])
 		var t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
-		# Ease-out so the swing snaps through the active hit window
-		var te: float = 1.0 - pow(1.0 - t, 3.0)
 		var r_start: float = float(cfg["rot_start"])
 		var r_end:   float = float(cfg["rot_end"])
 		var th_start: float = float(cfg["thrust_start"])
 		var th_end:   float = float(cfg["thrust_end"])
-		_axe_pivot.rotation = lerpf(r_start, r_end, te)
-		_axe_pivot.position.x = lerpf(th_start, th_end, te)
-		_axe.scale.x = 1.0 if facing_right else -1.0
-		_axe.position.x = (4.0 if facing_right else -4.0)
+
+		# Phase split: first ~28% is windup (ease-in-out from origin → start
+		# pose), the remaining ~72% is the strike (ease-out cubic from start
+		# pose → end pose). Stab skips windup since both ends share rotation.
+		const WINDUP: float = 0.28
+		var rot_now: float
+		var thrust_now: float
+		if t < WINDUP and attack_stage != 3:
+			var u: float = t / WINDUP
+			var ue: float = u * u * (3.0 - 2.0 * u)   # smoothstep
+			rot_now = lerpf(_attack_swing_origin_rot, r_start, ue)
+			thrust_now = lerpf(_attack_swing_origin_thrust, th_start, ue)
+		else:
+			var u2: float = clampf((t - WINDUP) / (1.0 - WINDUP), 0.0, 1.0) if attack_stage != 3 else t
+			var ue2: float = 1.0 - pow(1.0 - u2, 3.0)
+			rot_now = lerpf(r_start, r_end, ue2)
+			thrust_now = lerpf(th_start, th_end, ue2)
+
+		_axe_pivot.rotation = rot_now
+		_axe_pivot.position = Vector2(thrust_now, 0.0)
+
+		# Anchor + flip — the axe is held at the marine's front hand. We keep
+		# the axe rig in local space and flip the whole rig with facing.
+		var face_dir: float = 1.0 if facing_right else -1.0
+		_axe.position = Vector2(2.0 * face_dir, -2.0)
+		_axe.scale.x = face_dir
+
+		# --- Arms — recompute every frame so they always reach the grip points.
+		# Front shoulder is on the facing side; back shoulder behind.
+		var front_shoulder: Vector2 = Vector2(3.0 * face_dir, -4.0)
+		var back_shoulder:  Vector2 = Vector2(-3.0 * face_dir, -4.0)
+		# Grip points in axe-local space: front hand at the lower grip wrap,
+		# back hand higher up the shaft so it reads as two-handed.
+		var front_grip_local := Vector2(0.0, 0.5)
+		var back_grip_local  := Vector2(0.0, -14.0)
+		var front_grip: Vector2 = to_local(_axe_pivot.to_global(front_grip_local))
+		var back_grip:  Vector2 = to_local(_axe_pivot.to_global(back_grip_local))
+		_arm_front.points = PackedVector2Array([front_shoulder, front_grip])
+		_arm_back.points  = PackedVector2Array([back_shoulder,  back_grip])
+		_hand_front.position = front_grip - Vector2(2.0, 2.0)
+		_hand_back.position  = back_grip - Vector2(2.0, 2.0)
 
 	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
 	if sprite.animation != anim:
@@ -776,21 +894,28 @@ func _fire_rifle(muzzle: Vector2, dir: Vector2) -> void:
 	bullet.setup(dir, bullet_speed, bullet_damage)
 
 func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
-	var base_angle: float = dir.angle()
+	# 2x2 grid of parallel pellets. Lateral axis is perpendicular to the aim
+	# direction; depth axis is along it. All pellets travel in `dir`, just
+	# from staggered starting positions, so they form a rectangle moving
+	# forward like a quad burst of rifles.
 	var pellet_dmg: int = bullet_damage * shotgun_damage_mult
-	for i in shotgun_pellet_count:
-		# Spread pellets evenly across the cone with a small random jitter
-		var t: float = -1.0 if shotgun_pellet_count == 1 else (float(i) / float(shotgun_pellet_count - 1)) * 2.0 - 1.0
-		var ang: float = base_angle + t * shotgun_spread + randf_range(-0.04, 0.04)
-		var pellet_dir: Vector2 = Vector2(cos(ang), sin(ang))
+	var perp: Vector2 = Vector2(-dir.y, dir.x)
+	var offsets := [
+		Vector2(-shotgun_grid_depth, -shotgun_grid_lateral),
+		Vector2(-shotgun_grid_depth,  shotgun_grid_lateral),
+		Vector2( shotgun_grid_depth, -shotgun_grid_lateral),
+		Vector2( shotgun_grid_depth,  shotgun_grid_lateral),
+	]
+	for off in offsets:
+		var spawn_offset: Vector2 = dir * off.x + perp * off.y
 		var pellet := PLAYER_BULLET_SCENE.instantiate()
 		get_parent().add_child(pellet)
-		pellet.global_position = muzzle
+		pellet.global_position = muzzle + spawn_offset
 		pellet.max_range = shotgun_pellet_range
-		pellet.setup(pellet_dir, shotgun_pellet_speed, pellet_dmg)
+		pellet.setup(dir, shotgun_pellet_speed, pellet_dmg)
 		pellet.modulate = Color(1.0, 0.72, 0.30)
 	# A little knockback so the shotgun has weight
-	velocity.x -= dir.x * 60.0
+	velocity.x -= dir.x * 50.0
 	_apply_shake(2.5)
 
 func _spawn_double_jump_effect() -> void:
