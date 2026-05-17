@@ -7,10 +7,11 @@ const GAME_SCENE := "res://scenes/Main.tscn"
 const OPTIONS_SCENE := "res://scenes/OptionsMenu.tscn"
 const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 
-@onready var start_button: Button = $VBox/StartButton
-@onready var options_button: Button = $VBox/OptionsButton
-@onready var quit_button: Button = $VBox/QuitButton
-@onready var vbox: VBoxContainer = $VBox
+@onready var center: CenterContainer = $Center
+@onready var vbox: VBoxContainer = $Center/VBox
+@onready var start_button: Button = $Center/VBox/StartButton
+@onready var options_button: Button = $Center/VBox/OptionsButton
+@onready var quit_button: Button = $Center/VBox/QuitButton
 
 var mp_button: Button
 var mp_panel: PanelContainer
@@ -43,12 +44,18 @@ func _insert_multiplayer_button() -> void:
 	vbox.move_child(mp_button, 1)
 
 func _build_multiplayer_panel() -> void:
+	# Put the panel inside its own CenterContainer so it stays centered on
+	# the screen regardless of resolution and grows to fit its content.
+	var mp_center := CenterContainer.new()
+	mp_center.name = "MultiplayerCenter"
+	mp_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	mp_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(mp_center)
+
 	mp_panel = PanelContainer.new()
-	mp_panel.set_anchors_preset(Control.PRESET_CENTER)
-	mp_panel.custom_minimum_size = Vector2(300, 260)
-	mp_panel.position = Vector2(-150, -130)
+	mp_panel.custom_minimum_size = Vector2(280, 0)
 	mp_panel.visible = false
-	add_child(mp_panel)
+	mp_center.add_child(mp_panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 16)
