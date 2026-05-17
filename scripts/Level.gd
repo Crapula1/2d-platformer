@@ -21,6 +21,15 @@ const GRENADE_PICKUP_SCENE   := preload("res://scenes/GrenadePickup.tscn")
 const LEVER_SCENE            := preload("res://scenes/Lever.tscn")
 const DOOR_SCENE             := preload("res://scenes/Door.tscn")
 
+# Jungle prop scenes (visual decoration)
+const SKY_SCENE              := preload("res://scenes/props/Sky.tscn")
+const CLOUD_SCENE            := preload("res://scenes/props/Cloud.tscn")
+const GRASS_TUFT_SCENE       := preload("res://scenes/props/GrassTuft.tscn")
+const ROCK_SCENE             := preload("res://scenes/props/Rock.tscn")
+const CLIFF_SCENE            := preload("res://scenes/props/Cliff.tscn")
+const BUSH_SCENE             := preload("res://scenes/props/Bush.tscn")
+const PALM_TREE_SCENE        := preload("res://scenes/props/PalmTree.tscn")
+
 const LEVEL_LEFT:    float =    -20.0
 const LEVEL_RIGHT:   float =  6020.0
 const LEVEL_TOP:     float =   -60.0
@@ -102,11 +111,18 @@ func _build_parallax_background() -> void:
 	var pbg := ParallaxBackground.new()
 	add_child(pbg)
 
-	# Sky gradient (no scroll)
-	var sky := ParallaxLayer.new()
-	sky.motion_scale = Vector2.ZERO
-	pbg.add_child(sky)
-	_paint_sky_gradient(sky)
+	# Sky gradient (no scroll) — instance of the Sky prop scene
+	var sky_layer := ParallaxLayer.new()
+	sky_layer.motion_scale = Vector2.ZERO
+	pbg.add_child(sky_layer)
+	_paint_sky_gradient(sky_layer)
+
+	# Drifting clouds — very slow scroll
+	var cloud_layer := ParallaxLayer.new()
+	cloud_layer.motion_scale = Vector2(0.08, 0.0)
+	cloud_layer.motion_mirroring = Vector2(1280.0, 0.0)
+	pbg.add_child(cloud_layer)
+	_paint_clouds(cloud_layer)
 
 	# Far misty mountain ridges — slow scroll
 	var far := ParallaxLayer.new()
@@ -126,17 +142,36 @@ func _build_parallax_background() -> void:
 	_paint_near_trees()
 
 func _paint_sky_gradient(parent: Node) -> void:
-	var steps := 8
-	for i in steps:
-		var t: float = float(i) / float(steps - 1)
-		var band := ColorRect.new()
-		band.z_index = -10
-		band.offset_left = -640.0
-		band.offset_right = 1920.0
-		band.offset_top = -200.0 + float(i) * 130.0
-		band.offset_bottom = -200.0 + float(i + 1) * 130.0 + 1.0
-		band.color = COL_BG_TOP.lerp(COL_BG_BOT, t)
-		parent.add_child(band)
+	var sky := SKY_SCENE.instantiate()
+	sky.top_color = COL_BG_TOP
+	sky.mid_color = COL_BG_BOT
+	sky.horizon_color = Color(0.48, 0.42, 0.34)
+	sky.rect_size = Vector2(2560.0, 1040.0)
+	sky.origin = Vector2(-640.0, -200.0)
+	sky.bands = 12
+	sky.show_sun = true
+	sky.sun_position = Vector2(980.0, 240.0)
+	sky.sun_radius = 26.0
+	(sky as CanvasItem).z_index = -10
+	parent.add_child(sky)
+
+func _paint_clouds(parent: Node) -> void:
+	var data: Array = [
+		{"pos": Vector2(120.0, 180.0),  "w": 110.0, "seed": 3},
+		{"pos": Vector2(420.0, 100.0),  "w":  84.0, "seed": 11},
+		{"pos": Vector2(720.0, 200.0),  "w": 140.0, "seed": 19},
+		{"pos": Vector2(1020.0, 140.0), "w":  96.0, "seed": 27},
+	]
+	for d in data:
+		var c := CLOUD_SCENE.instantiate()
+		c.cloud_width  = float(d["w"])
+		c.cloud_height = float(d["w"]) * 0.32
+		c.drift_speed  = 4.0
+		c.wrap_width   = 1280.0
+		c.rand_seed    = int(d["seed"])
+		(c as CanvasItem).z_index = -9
+		(c as Node2D).position = d["pos"] as Vector2
+		parent.add_child(c)
 
 func _paint_far_hills(parent: Node) -> void:
 	# Two ridges of rolling mountains, layered for depth
@@ -201,83 +236,22 @@ func _blob_polygon(parent: Node, cx: float, cy: float, rx: float, ry: float, c: 
 	parent.add_child(poly)
 
 func _paint_near_trees() -> void:
-	# Foreground palm trees (between the player and the far layers), plus
-	# the occasional liana hanging from the ceiling.
+	# Foreground palm trees (instances of the PalmTree prop scene) plus the
+	# occasional hanging liana from the ceiling.
 	var x: float = 200.0
 	var i: int = 0
 	while x < LEVEL_RIGHT - 80.0:
-		var height: float = 130.0 + float(i % 3) * 18.0
-		_draw_palm_tree(x, height, i)
+		var palm := PALM_TREE_SCENE.instantiate()
+		palm.tree_height = 130.0 + float(i % 3) * 18.0
+		palm.variant     = i % 3
+		palm.rand_seed   = i + 7
+		(palm as Node2D).position = Vector2(x, GROUND_TOP - 2.0)
+		(palm as CanvasItem).z_index = -1
+		add_child(palm)
 		if i % 2 == 0:
 			_draw_liana(x + 160.0)
 		x += 380.0
 		i += 1
-
-func _draw_palm_tree(x: float, height: float, seed_i: int) -> void:
-	var base_y: float = GROUND_TOP - 2.0
-	var top_y: float = base_y - height
-	var lean: float = sin(float(seed_i) * 1.3) * 6.0
-
-	# Trunk — slight S-curve via two stacked quads
-	var trunk := Polygon2D.new()
-	trunk.z_index = -1
-	trunk.color = COL_TRUNK
-	trunk.polygon = PackedVector2Array([
-		Vector2(x - 6.0,             base_y),
-		Vector2(x + 6.0,             base_y),
-		Vector2(x + 4.0 + lean * 0.3, base_y - height * 0.55),
-		Vector2(x + 3.0 + lean,       top_y),
-		Vector2(x - 3.0 + lean,       top_y),
-		Vector2(x - 4.0 + lean * 0.3, base_y - height * 0.55),
-	])
-	add_child(trunk)
-
-	# Trunk ring highlights (a few horizontal stripes for bark texture)
-	for k in 3:
-		var ry: float = base_y - height * (0.25 + 0.22 * float(k))
-		var ring := ColorRect.new()
-		ring.z_index = -1
-		ring.offset_left  = x - 5.0 + lean * (ry - base_y) / -height * 0.6
-		ring.offset_right = x + 5.0 + lean * (ry - base_y) / -height * 0.6
-		ring.offset_top   = ry
-		ring.offset_bottom = ry + 2.0
-		ring.color = COL_TRUNK_HI
-		add_child(ring)
-
-	# Fronds — 7 elongated diamond shapes fanning out around the top
-	var frond_count := 7
-	for k in frond_count:
-		var t: float = float(k) / float(frond_count - 1)
-		var ang: float = lerpf(PI * 1.15, TAU - PI * 0.15, t)
-		var flen: float = 58.0 + sin(float(k + seed_i) * 1.7) * 8.0
-		var fwid: float = 8.0
-		var ex: float = x + lean + cos(ang) * flen
-		var ey: float = top_y + sin(ang) * flen * 0.55
-		var mid_x: float = x + lean + cos(ang) * flen * 0.5
-		var mid_y: float = top_y + sin(ang) * flen * 0.27
-		# Perpendicular offset for the diamond's width
-		var perp := Vector2(-sin(ang), cos(ang)) * fwid
-		var frond := Polygon2D.new()
-		frond.z_index = -1
-		frond.color = COL_FROND if (k + seed_i) % 2 == 0 else COL_FROND_HI
-		frond.polygon = PackedVector2Array([
-			Vector2(x + lean, top_y),
-			Vector2(mid_x + perp.x, mid_y + perp.y),
-			Vector2(ex, ey),
-			Vector2(mid_x - perp.x, mid_y - perp.y),
-		])
-		add_child(frond)
-
-	# A coconut cluster
-	for k in 3:
-		var co := ColorRect.new()
-		co.z_index = -1
-		co.offset_left  = x + lean - 6.0 + float(k) * 5.0
-		co.offset_right = x + lean - 2.0 + float(k) * 5.0
-		co.offset_top   = top_y + 2.0
-		co.offset_bottom = top_y + 6.0
-		co.color = COL_TRUNK
-		add_child(co)
 
 func _draw_liana(x: float) -> void:
 	var length: float = randf_range(60.0, 140.0)
@@ -351,11 +325,16 @@ func _add_ground(x_start: float, x_end: float) -> void:
 	while gx < x_end - 24.0:
 		_add_grass_tuft(gx)
 		gx += randf_range(48.0, 110.0)
-	# Scatter rocky outcrops (non-uniform spacing for organic feel)
+	# Scatter mossy rocky outcrops
 	var rx: float = x_start + randf_range(60.0, 140.0)
 	while rx < x_end - 80.0:
 		_add_ground_rock(rx)
 		rx += randf_range(180.0, 320.0)
+	# Scatter low foliage (bushes / ferns / undergrowth) — sparse, organic
+	var bx: float = x_start + randf_range(40.0, 120.0)
+	while bx < x_end - 40.0:
+		_add_bush(bx)
+		bx += randf_range(140.0, 260.0)
 
 func _paint_dirt_band(x_start: float, x_end: float, y_top: float, y_bot: float) -> void:
 	var band := ColorRect.new()
@@ -368,53 +347,41 @@ func _paint_dirt_band(x_start: float, x_end: float, y_top: float, y_bot: float) 
 	add_child(band)
 
 func _add_ground_rock(x: float) -> void:
-	# Mossy outcrop (visual only — does not block movement). Sits on the
-	# grass surface; the mossy cap matches the grass color.
-	var base_y: float = GROUND_TOP
-	var w: float = randf_range(18.0, 34.0)
-	var h: float = randf_range(8.0, 18.0)
-	var body := Polygon2D.new()
-	body.z_index = 0
-	body.color = COL_ROCK
-	body.polygon = PackedVector2Array([
-		Vector2(x - w * 0.5,  base_y),
-		Vector2(x - w * 0.4,  base_y - h * 0.85),
-		Vector2(x - w * 0.1,  base_y - h),
-		Vector2(x + w * 0.25, base_y - h * 0.95),
-		Vector2(x + w * 0.5,  base_y - h * 0.5),
-		Vector2(x + w * 0.45, base_y),
-	])
-	add_child(body)
-	# Mossy cap
-	var cap := Polygon2D.new()
-	cap.z_index = 0
-	cap.color = COL_ROCK_TOP
-	cap.polygon = PackedVector2Array([
-		Vector2(x - w * 0.35, base_y - h * 0.75),
-		Vector2(x - w * 0.1,  base_y - h),
-		Vector2(x + w * 0.25, base_y - h * 0.95),
-		Vector2(x + w * 0.35, base_y - h * 0.7),
-	])
-	add_child(cap)
-	# Shadow seam at the base
-	var seam := ColorRect.new()
-	seam.z_index = 0
-	seam.offset_left = x - w * 0.5
-	seam.offset_right = x + w * 0.5
-	seam.offset_top = base_y - 1.0
-	seam.offset_bottom = base_y + 1.5
-	seam.color = COL_ROCK_EDGE
-	add_child(seam)
+	var r := ROCK_SCENE.instantiate()
+	r.rock_size   = randf_range(18.0, 34.0)
+	r.rock_height = randf_range(10.0, 18.0)
+	r.variant     = randi() % 3
+	r.mossy       = true
+	r.rand_seed   = int(x)
+	(r as Node2D).position = Vector2(x, GROUND_TOP)
+	add_child(r)
 
 func _add_grass_tuft(x: float) -> void:
-	var t := ColorRect.new()
-	t.z_index = 0
-	t.offset_left = x - 2.0
-	t.offset_top = GROUND_TOP - 4.0
-	t.offset_right = x + 2.0
-	t.offset_bottom = GROUND_TOP
-	t.color = COL_GRASS
-	add_child(t)
+	var g := GRASS_TUFT_SCENE.instantiate()
+	g.variant     = randi() % 2
+	g.tuft_width  = randf_range(6.0, 11.0)
+	g.tuft_height = randf_range(6.0, 11.0)
+	g.blade_count = 3 + (randi() % 3)
+	(g as Node2D).position = Vector2(x, GROUND_TOP)
+	add_child(g)
+
+func _add_bush(x: float) -> void:
+	var b := BUSH_SCENE.instantiate()
+	b.variant       = randi() % 3
+	b.foliage_size  = randf_range(16.0, 26.0)
+	b.rand_seed     = int(x) + 13
+	(b as Node2D).position = Vector2(x, GROUND_TOP)
+	(b as CanvasItem).z_index = -1 if (randi() % 2 == 0) else 1
+	add_child(b)
+
+func _add_cliff(x: float, y: float, w: float, h: float) -> void:
+	var c := CLIFF_SCENE.instantiate()
+	c.cliff_width  = w
+	c.cliff_height = h
+	c.mossy        = true
+	(c as Node2D).position = Vector2(x, y)
+	(c as CanvasItem).z_index = -2
+	add_child(c)
 
 func _add_spike(x: float, y: float = GROUND_TOP - 8.0) -> void:
 	var spike := SPIKE_SCENE.instantiate() as StaticBody2D
@@ -942,6 +909,10 @@ func _build_section_d_spike_corridor() -> void:
 func _build_section_e_vertical_climb() -> void:
 	_add_ground(2900.0, 3500.0)
 
+	# Towering cliff backdrop frames the vertical climb section
+	_add_cliff(2880.0, 60.0, 120.0, 340.0)
+	_add_cliff(3340.0, 100.0, 140.0, 300.0)
+
 	# Background scaffolding columns to sell the verticality
 	_add_branch_v(2950.0, 60.0, 400.0)
 	_add_branch_v(3300.0, 60.0, 400.0)
@@ -1032,6 +1003,9 @@ func _build_section_f_big_pit_gauntlet() -> void:
 # -----------------------------------------------------------------------------
 func _build_section_g_mixed_challenge() -> void:
 	_add_ground(4500.0, 5200.0)
+
+	# Cliff backdrop on the right side as you approach the final gate
+	_add_cliff(5120.0, 80.0, 110.0, 320.0)
 
 	_add_platform(4540.0, 320.0, 96.0)
 	_add_break_platform(4700.0, 280.0, 80.0)

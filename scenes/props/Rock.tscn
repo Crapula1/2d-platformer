@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/props/Rock.gd" id="1_rock"]
+
+[node name="Rock" type="Node2D"]
+script = ExtResource("1_rock")
