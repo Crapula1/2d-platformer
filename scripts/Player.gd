@@ -550,6 +550,27 @@ func _stage_config(stage: int) -> Dictionary:
 				"tint": Color(1.0, 0.85, 0.2),
 			}
 
+func _solve_ik(shoulder: Vector2, hand: Vector2, upper: float, fore: float, bend_sign: float) -> Vector2:
+	# Classic 2-bone IK: place an elbow so |shoulder→elbow|=upper and
+	# |elbow→hand|=fore. bend_sign picks which of the two solutions to use
+	# (positive = elbow bends "below" the shoulder→hand line in screen space).
+	var to_hand: Vector2 = hand - shoulder
+	var d: float = to_hand.length()
+	if d <= 0.0001:
+		return shoulder + Vector2(0.0, upper)
+	# If the target is out of reach, fully extend toward it.
+	if d >= upper + fore:
+		return shoulder + to_hand.normalized() * upper
+	# If the target is closer than the difference, collapse the elbow outward.
+	if d <= absf(upper - fore):
+		var sign_dir: float = 1.0 if upper >= fore else -1.0
+		return shoulder + to_hand.normalized() * upper * sign_dir
+	var a: float = (upper * upper - fore * fore + d * d) / (2.0 * d)
+	var h: float = sqrt(maxf(upper * upper - a * a, 0.0))
+	var axis: Vector2 = to_hand / d
+	var perp: Vector2 = Vector2(-axis.y, axis.x)
+	return shoulder + axis * a + perp * h * bend_sign
+
 func _build_axe() -> void:
 	# A 2-handed battle axe drawn from polygons. Pivot sits at the front
 	# (lower) hand grip so rotation visually pivots around the marine's hand.
@@ -635,8 +656,9 @@ func _build_axe() -> void:
 	])
 	_axe_pivot.add_child(trim)
 
-	# --- Arms — two procedural arms that anchor at the marine's shoulders and
-	# always point at the axe's grip points so it visibly looks held.
+	# --- Arms — 2-bone IK (shoulder → elbow → hand). Line2D's joint mode
+	# rounds the elbow corner; we recompute the elbow each frame so the
+	# arms bend naturally as the marine reaches through the swing.
 	_arm_back = Line2D.new()
 	_arm_back.width = 3.2
 	_arm_back.default_color = Color(0.20, 0.30, 0.13)
@@ -644,7 +666,8 @@ func _build_axe() -> void:
 	_arm_back.visible = false
 	_arm_back.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_arm_back.end_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_back.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
+	_arm_back.joint_mode = Line2D.LINE_JOINT_ROUND
+	_arm_back.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	add_child(_arm_back)
 
 	_arm_front = Line2D.new()
@@ -654,7 +677,8 @@ func _build_axe() -> void:
 	_arm_front.visible = false
 	_arm_front.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_arm_front.end_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_front.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
+	_arm_front.joint_mode = Line2D.LINE_JOINT_ROUND
+	_arm_front.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	add_child(_arm_front)
 
 	# Small hand rects at the grip points so the joint reads
@@ -794,20 +818,52 @@ func _update_sprite(delta: float) -> void:
 		_axe.position = Vector2(2.0 * face_dir, -2.0)
 		_axe.scale.x = face_dir
 
-		# --- Arms — recompute every frame so they always reach the grip points.
-		# Front shoulder is on the facing side; back shoulder behind.
+		# --- Arms — 2-bone IK from shoulder to hand at the axe grip.
 		var front_shoulder: Vector2 = Vector2(3.0 * face_dir, -4.0)
 		var back_shoulder:  Vector2 = Vector2(-3.0 * face_dir, -4.0)
-		# Grip points in axe-local space: front hand at the lower grip wrap,
-		# back hand higher up the shaft so it reads as two-handed.
 		var front_grip_local := Vector2(0.0, 0.5)
 		var back_grip_local  := Vector2(0.0, -14.0)
 		var front_grip: Vector2 = to_local(_axe_pivot.to_global(front_grip_local))
 		var back_grip:  Vector2 = to_local(_axe_pivot.to_global(back_grip_local))
-		_arm_front.points = PackedVector2Array([front_shoulder, front_grip])
-		_arm_back.points  = PackedVector2Array([back_shoulder,  back_grip])
+
+		# Anatomy: upper arm 7px, forearm 8px. Front arm reaches farther
+		# (lead arm), back arm slightly shorter to keep elbow inside the
+		# body silhouette.
+		var front_elbow: Vector2 = _solve_ik(front_shoulder, front_grip, 7.0, 8.0, 1.0)
+		var back_elbow:  Vector2 = _solve_ik(back_shoulder, back_grip, 6.5, 7.5, 1.0)
+
+		_arm_front.points = PackedVector2Array([front_shoulder, front_elbow, front_grip])
+		_arm_back.points  = PackedVector2Array([back_shoulder, back_elbow, back_grip])
 		_hand_front.position = front_grip - Vector2(2.0, 2.0)
 		_hand_back.position  = back_grip - Vector2(2.0, 2.0)
+
+		# Body engagement: lean the torso into the swing during the strike
+		# phase, then settle. Stab adds a small step-forward.
+		var lean_amount: float = 0.0
+		if attack_stage == 1:
+			lean_amount = 0.16   # cleave: moderate lean
+		elif attack_stage == 2:
+			lean_amount = 0.22   # smash: heavier lean
+		elif attack_stage == 3:
+			lean_amount = 0.05   # stab: minimal — straightened thrust
+		# Lean kicks in around the strike (t≈0.30..0.80), settles after.
+		var lean_t: float = clampf((t - 0.30) / 0.50, 0.0, 1.0)
+		var lean_decay: float = clampf((t - 0.80) / 0.20, 0.0, 1.0)
+		var lean_now: float = lean_amount * lean_t * (1.0 - lean_decay * 0.6) * face_dir
+		sprite.rotation = lerpf(sprite.rotation, lean_now, minf(delta * 24.0, 1.0))
+
+		# Stab step-forward: shift sprite slightly in facing direction during
+		# the thrust window, then return.
+		var step_offset: float = 0.0
+		if attack_stage == 3:
+			var step_t: float = clampf((t - 0.15) / 0.45, 0.0, 1.0)
+			var step_back: float = clampf((t - 0.70) / 0.30, 0.0, 1.0)
+			step_offset = 3.0 * face_dir * step_t * (1.0 - step_back)
+		sprite.position.x = lerpf(sprite.position.x, step_offset, minf(delta * 24.0, 1.0))
+	else:
+		# Settle the sprite back to its rest pose between swings.
+		sprite.rotation = lerpf(sprite.rotation, 0.0, minf(delta * 18.0, 1.0))
+		sprite.position.x = lerpf(sprite.position.x, 0.0, minf(delta * 18.0, 1.0))
 
 	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
 	if sprite.animation != anim:
