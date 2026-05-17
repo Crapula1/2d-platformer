@@ -56,6 +56,16 @@ var _attack_swing_origin_thrust: float = 0.0
 @export var slide_cooldown: float = 0.65
 @export var slide_threshold: float = 85.0
 
+# Slide dash (dedicated key — works in air & ground, full i-frames)
+@export var dash_speed: float = 540.0
+@export var dash_duration: float = 0.18
+@export var dash_cooldown: float = 0.7
+
+# Roll (ground dodge, i-frames, on cooldown)
+@export var roll_speed: float = 340.0
+@export var roll_duration: float = 0.42
+@export var roll_cooldown: float = 0.95
+
 # Sprint
 @export var sprint_multiplier: float = 1.65
 
@@ -109,6 +119,14 @@ var slide_dir: float = 1.0
 var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
 var is_wall_sliding: bool = false
+var is_dashing: bool = false
+var _dash_timer: float = 0.0
+var _dash_cd: float = 0.0
+var _dash_dir: float = 1.0
+var is_rolling: bool = false
+var _roll_timer: float = 0.0
+var _roll_cd: float = 0.0
+var _roll_dir: float = 1.0
 var _jetpack_armed: bool = false
 var _jetpack_fuel: float = 0.0
 var _is_jetpacking: bool = false
@@ -137,7 +155,14 @@ var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
 var _shoot_timer: float = 0.0
 
-@onready var sprite: AnimatedSprite2D = $Sprite
+# Visual: $Sprite is an AnimatedSprite2D for marine, a Node2D wrapping a
+# Facing child for demon. _anim_sprite stays null for non-animated avatars,
+# _facing_node is what gets flipped. base_scale scales the squash/stretch
+# math from the marine baseline (0.3) to whatever the avatar wants.
+@export var base_scale: Vector2 = Vector2(0.3, 0.3)
+@onready var sprite: Node2D = $Sprite
+var _anim_sprite: AnimatedSprite2D = null
+var _facing_node: Node2D = null
 @onready var stand_shape: CollisionShape2D = $CollisionShape2D
 @onready var crouch_shape: CollisionShape2D = $CrouchShape
 @onready var ceiling_ray: RayCast2D = $CeilingRay
@@ -151,6 +176,14 @@ func _ready() -> void:
 	attack_shape.disabled = true
 	crouch_shape.disabled = true
 	add_to_group("player")
+	# Resolve visual structure (AnimatedSprite2D vs Node2D wrapper).
+	if sprite is AnimatedSprite2D:
+		_anim_sprite = sprite as AnimatedSprite2D
+		_facing_node = sprite
+	else:
+		_facing_node = sprite.get_node_or_null("Facing") as Node2D
+		if _facing_node == null:
+			_facing_node = sprite
 	# Hit-detection only fires on the local authority's player so damage
 	# doesn't double-apply across peers.
 	if is_multiplayer_authority():
@@ -179,7 +212,10 @@ func _ready() -> void:
 	_jet_flame.z_index = -1
 	_jet_flame.visible = false
 	add_child(_jet_flame)
-	_build_axe()
+	# The axe rig is sized for the marine sprite; skip it for other avatars
+	# until they get their own weapon visuals.
+	if _anim_sprite != null:
+		_build_axe()
 
 func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
@@ -196,6 +232,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_update_timers(delta)
+	_handle_dash_input()
+	_handle_roll_input()
 	_handle_gravity(delta)
 	_handle_jump_input()
 	_handle_crouch_input()
@@ -232,6 +270,18 @@ func _update_timers(delta: float) -> void:
 		_grenade_cooldown -= delta
 	if _shoot_timer > 0:
 		_shoot_timer -= delta
+	if _dash_cd > 0:
+		_dash_cd -= delta
+	if _roll_cd > 0:
+		_roll_cd -= delta
+	if is_dashing:
+		_dash_timer -= delta
+		if _dash_timer <= 0:
+			_end_dash()
+	if is_rolling:
+		_roll_timer -= delta
+		if _roll_timer <= 0:
+			_end_roll()
 	if is_sliding:
 		slide_timer -= delta
 		if slide_timer <= 0:
@@ -263,6 +313,9 @@ func _update_buffs(delta: float) -> void:
 		active_buffs.erase(key)
 
 func _handle_gravity(delta: float) -> void:
+	if is_dashing:
+		velocity.y = 0.0
+		return
 	if is_on_floor():
 		return
 	if is_wall_sliding:
@@ -305,7 +358,7 @@ func _handle_jump_input() -> void:
 		velocity.y *= jump_cut_multiplier
 
 func _handle_crouch_input() -> void:
-	if is_sliding:
+	if is_sliding or is_dashing or is_rolling:
 		return
 
 	if Input.is_action_just_pressed("crouch") and is_on_floor():
@@ -335,6 +388,52 @@ func _end_slide() -> void:
 	if not Input.is_action_pressed("crouch") and _can_stand():
 		_set_crouching(false)
 
+func _handle_dash_input() -> void:
+	if Input.is_action_just_pressed("dash") and _dash_cd <= 0 and not is_dashing and not is_rolling and not is_dead:
+		_start_dash()
+
+func _handle_roll_input() -> void:
+	if Input.is_action_just_pressed("roll") and _roll_cd <= 0 and not is_rolling and not is_dashing and is_on_floor() and not is_dead:
+		_start_roll()
+
+func _start_dash() -> void:
+	is_dashing = true
+	_dash_timer = dash_duration
+	_dash_cd = dash_cooldown
+	var input_dir: float = Input.get_axis("move_left", "move_right")
+	_dash_dir = input_dir if input_dir != 0.0 else (1.0 if facing_right else -1.0)
+	facing_right = _dash_dir > 0.0
+	velocity.x = _dash_dir * dash_speed
+	velocity.y = 0.0
+	is_invincible = true
+	invincibility_timer = maxf(invincibility_timer, dash_duration + 0.05)
+	if is_sliding:
+		_end_slide()
+
+func _end_dash() -> void:
+	is_dashing = false
+	# Preserve a chunk of momentum so it feels fluid rather than a hard stop.
+	velocity.x = _dash_dir * dash_speed * 0.55
+
+func _start_roll() -> void:
+	is_rolling = true
+	_roll_timer = roll_duration
+	_roll_cd = roll_cooldown
+	var input_dir: float = Input.get_axis("move_left", "move_right")
+	_roll_dir = input_dir if input_dir != 0.0 else (1.0 if facing_right else -1.0)
+	facing_right = _roll_dir > 0.0
+	velocity.x = _roll_dir * roll_speed
+	_set_crouching(true)
+	is_invincible = true
+	invincibility_timer = maxf(invincibility_timer, roll_duration + 0.05)
+	if is_sliding:
+		_end_slide()
+
+func _end_roll() -> void:
+	is_rolling = false
+	if not Input.is_action_pressed("crouch") and _can_stand():
+		_set_crouching(false)
+
 func _set_crouching(value: bool) -> void:
 	is_crouching = value
 	stand_shape.set_deferred("disabled", value)
@@ -344,6 +443,12 @@ func _can_stand() -> bool:
 	return not ceiling_ray.is_colliding()
 
 func _handle_horizontal_movement(delta: float) -> void:
+	if is_dashing:
+		velocity.x = _dash_dir * dash_speed
+		return
+	if is_rolling:
+		velocity.x = _roll_dir * roll_speed
+		return
 	if is_sliding:
 		# Decelerate smoothly through the slide
 		velocity.x = move_toward(velocity.x, slide_dir * (slide_speed * 0.4), 110.0 * delta)
@@ -364,7 +469,7 @@ func _handle_horizontal_movement(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, f * delta)
 
 func _update_wall_slide() -> void:
-	if is_on_floor() or is_crouching or is_sliding:
+	if is_on_floor() or is_crouching or is_sliding or is_dashing or is_rolling:
 		is_wall_sliding = false
 		return
 	if not is_on_wall() or velocity.y <= 0:
@@ -378,6 +483,8 @@ func _update_wall_slide() -> void:
 		facing_right = wn.x < 0.0
 
 func _handle_jump_logic() -> void:
+	if is_dashing or is_rolling:
+		return
 	if jump_buffer_timer > 0:
 		if is_wall_sliding:
 			var wn := get_wall_normal()
@@ -780,7 +887,8 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 func _die() -> void:
 	is_dead = true
-	sprite.stop()
+	if _anim_sprite != null:
+		_anim_sprite.stop()
 	sprite.modulate = Color(0.5, 0.5, 0.5)
 	_apply_shake(12.0)
 	died.emit()
@@ -813,10 +921,11 @@ func _update_sprite(delta: float) -> void:
 		base.a = sprite.modulate.a
 		sprite.modulate = base
 
-	sprite.flip_h = facing_right
+	_set_facing(facing_right)
 
 	# Animate the axe through its swing — windup back, then strike forward.
-	if is_attacking:
+	# Only the marine has the axe rig; demon attacks still hit but without it.
+	if is_attacking and _axe != null:
 		var cfg: Dictionary = _stage_config(attack_stage)
 		var dur: float = float(cfg["duration"])
 		var t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
@@ -897,14 +1006,16 @@ func _update_sprite(delta: float) -> void:
 		sprite.rotation = lerpf(sprite.rotation, 0.0, minf(delta * 18.0, 1.0))
 		sprite.position.x = lerpf(sprite.position.x, 0.0, minf(delta * 18.0, 1.0))
 
-	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
-	if sprite.animation != anim:
-		sprite.play(anim)
+	var anim: StringName = &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
+	_play_anim(anim)
 
+	# Squash/stretch in units of the marine baseline (0.3). Scaling by
+	# base_scale / 0.3 lets demon (base_scale 1.0) reuse the same multipliers.
+	var ratio: Vector2 = base_scale / Vector2(0.3, 0.3)
 	var target_scale: Vector2
 	var target_y: float
 
-	if is_sliding:
+	if is_sliding or is_rolling:
 		target_scale = Vector2(0.405, 0.12)
 		target_y = 8.4
 	elif is_crouching:
@@ -923,9 +1034,25 @@ func _update_sprite(delta: float) -> void:
 		target_scale = Vector2(0.3, 0.3)
 		target_y = 0.0
 
+	target_scale *= ratio
 	var t := minf(delta * 22.0, 1.0)
 	sprite.scale = sprite.scale.lerp(target_scale, t)
 	sprite.position.y = lerpf(sprite.position.y, target_y, t)
+
+func _set_facing(face_right: bool) -> void:
+	if _anim_sprite != null:
+		_anim_sprite.flip_h = face_right
+		return
+	var s := absf(_facing_node.scale.x)
+	if s == 0.0:
+		s = 1.0
+	_facing_node.scale.x = s if face_right else -s
+
+func _play_anim(name: StringName) -> void:
+	if _anim_sprite == null:
+		return
+	if _anim_sprite.animation != name:
+		_anim_sprite.play(name)
 
 func _handle_shoot_input() -> void:
 	if is_dead:
