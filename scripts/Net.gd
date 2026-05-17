@@ -13,6 +13,18 @@ signal connection_failed()
 signal disconnected()
 signal game_started()
 signal player_late_joined(peer_id: int)  # host-side: a new peer entered Main mid-run
+signal host_discovered(ip: String, port: int)
+
+# LAN discovery — host broadcasts a tiny UDP beacon on a separate port so
+# clients on the same network can auto-fill the host's IP without typing.
+const DISCOVERY_PORT: int = 7778
+const DISCOVERY_MAGIC: String = "JS_LAN_DISCOVERY"
+const DISCOVERY_INTERVAL: float = 1.0
+
+var _disc_broadcaster: PacketPeerUDP = null
+var _disc_listener: PacketPeerUDP = null
+var _disc_timer: float = 0.0
+var discovered_hosts: Dictionary = {}  # "ip:port" -> {ip, port, last_seen_ms}
 
 # peer_id -> {"name": String, "character": String, "ready": bool}
 var players: Dictionary = {}
@@ -26,6 +38,7 @@ var in_game: bool = false
 var current_seed: int = 0
 
 func _ready() -> void:
+	set_process(true)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -33,6 +46,7 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 var last_error: String = ""
+var _host_port: int = DEFAULT_PORT
 
 func host(port: int, player_name: String) -> bool:
 	local_name = player_name
@@ -44,10 +58,12 @@ func host(port: int, player_name: String) -> bool:
 		return false
 	multiplayer.multiplayer_peer = peer
 	is_host = true
+	_host_port = port
 	players.clear()
 	players[1] = _make_entry(local_name, local_character, false)
 	player_list_changed.emit()
 	last_error = ""
+	start_discovery_broadcast()
 	return true
 
 func join(ip: String, port: int, player_name: String) -> bool:
@@ -70,7 +86,70 @@ func leave() -> void:
 	players.clear()
 	is_host = false
 	in_game = false
+	stop_discovery_broadcast()
 	player_list_changed.emit()
+
+# --- LAN discovery ---------------------------------------------------------
+
+func start_discovery_broadcast() -> void:
+	if _disc_broadcaster != null:
+		return
+	var bc := PacketPeerUDP.new()
+	bc.set_broadcast_enabled(true)
+	var err := bc.set_dest_address("255.255.255.255", DISCOVERY_PORT)
+	if err != OK:
+		push_warning("[Net] discovery broadcaster setup failed: %d" % err)
+		return
+	_disc_broadcaster = bc
+	_disc_timer = 0.0  # send first beacon immediately
+
+func stop_discovery_broadcast() -> void:
+	if _disc_broadcaster != null:
+		_disc_broadcaster.close()
+		_disc_broadcaster = null
+
+func start_discovery_listen() -> void:
+	if _disc_listener != null:
+		return
+	var ls := PacketPeerUDP.new()
+	var err := ls.bind(DISCOVERY_PORT)
+	if err != OK:
+		push_warning("[Net] discovery listener bind failed: %d (another instance listening?)" % err)
+		return
+	_disc_listener = ls
+	discovered_hosts.clear()
+
+func stop_discovery_listen() -> void:
+	if _disc_listener != null:
+		_disc_listener.close()
+		_disc_listener = null
+	discovered_hosts.clear()
+
+func _process(delta: float) -> void:
+	if _disc_broadcaster != null:
+		_disc_timer -= delta
+		if _disc_timer <= 0.0:
+			_disc_timer = DISCOVERY_INTERVAL
+			var msg := "%s|%d" % [DISCOVERY_MAGIC, _host_port]
+			_disc_broadcaster.put_packet(msg.to_utf8_buffer())
+	if _disc_listener != null:
+		while _disc_listener.get_available_packet_count() > 0:
+			var data := _disc_listener.get_packet()
+			var text := data.get_string_from_utf8()
+			var parts := text.split("|")
+			if parts.size() >= 2 and parts[0] == DISCOVERY_MAGIC:
+				var ip: String = _disc_listener.get_packet_ip()
+				var port := int(parts[1])
+				_record_discovered(ip, port)
+
+func _record_discovered(ip: String, port: int) -> void:
+	var key := "%s:%d" % [ip, port]
+	var now := Time.get_ticks_msec()
+	if discovered_hosts.has(key):
+		discovered_hosts[key].last_seen_ms = now
+		return
+	discovered_hosts[key] = {"ip": ip, "port": port, "last_seen_ms": now}
+	host_discovered.emit(ip, port)
 
 func set_local_character(c: String) -> void:
 	if not (c in CHARACTERS):

@@ -23,6 +23,8 @@ var host_button: Button
 var join_button: Button
 var back_button: Button
 
+var _user_typed_ip: bool = false
+
 func _ready() -> void:
 	start_button.pressed.connect(_on_start)
 	options_button.pressed.connect(_on_options)
@@ -32,6 +34,11 @@ func _ready() -> void:
 	start_button.grab_focus()
 	Net.connection_failed.connect(_on_connection_failed)
 	Net.disconnected.connect(_on_disconnected)
+	Net.host_discovered.connect(_on_host_discovered)
+	Net.start_discovery_listen()
+
+func _exit_tree() -> void:
+	Net.stop_discovery_listen()
 
 func _insert_multiplayer_button() -> void:
 	mp_button = Button.new()
@@ -91,6 +98,7 @@ func _build_multiplayer_panel() -> void:
 	vb.add_child(_field_label("Host IP (Join only)"))
 	ip_edit = LineEdit.new()
 	ip_edit.text = "127.0.0.1"
+	ip_edit.text_changed.connect(func(_t: String) -> void: _user_typed_ip = true)
 	vb.add_child(ip_edit)
 
 	vb.add_child(_field_label("Port"))
@@ -190,3 +198,13 @@ func _on_connection_failed() -> void:
 
 func _on_disconnected() -> void:
 	status_label.text = "Disconnected from host"
+
+func _on_host_discovered(ip: String, port: int) -> void:
+	# Auto-fill the host IP unless the user has already typed something else.
+	if not _user_typed_ip:
+		ip_edit.text = ip
+		port_edit.text = str(port)
+	# Friendly status either way so people know a host is reachable.
+	if status_label != null:
+		status_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.6))
+		status_label.text = "Found host at %s:%d on the LAN" % [ip, port]
