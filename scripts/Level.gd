@@ -12,6 +12,7 @@ const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
 const BREAK_PLATFORM_SCRIPT  := preload("res://scripts/BreakPlatform.gd")
 const RANGE_SOLDIER_SCENE    := preload("res://scenes/RangeSoldier.tscn")
 const JET_TROOPER_SCENE      := preload("res://scenes/JetTrooper.tscn")
+const WINGED_DEMON_SCENE     := preload("res://scenes/WingedDemon.tscn")
 const COIN_SCENE             := preload("res://scenes/Coin.tscn")
 const SPIKE_SCENE            := preload("res://scenes/Spike.tscn")
 const POWERUP_SCENE          := preload("res://scenes/PowerUp.tscn")
@@ -103,7 +104,51 @@ func _ready() -> void:
 	_build_section_f_big_pit_gauntlet()
 	_build_section_g_mixed_challenge()
 	_build_section_h_final_stretch()
+	_spawn_winged_demons()
 	_setup_player_camera()
+
+func _spawn_winged_demons() -> void:
+	# Four winged sword-mini-bosses, each a different color palette and
+	# patrolling a different stretch of the level's airspace.
+	# Crimson — over section A start, smallest patrol box, lightest HP.
+	_add_winged_demon(
+		420.0, 200.0,
+		Color(0.85, 0.20, 0.20),   # body  — crimson
+		Color(0.55, 0.08, 0.10),   # wings — deep blood
+		Color(0.10, 0.05, 0.05),   # horns — near-black
+		Color(1.0, 0.90, 0.35),    # eye   — molten gold
+		Color(0.95, 0.95, 1.0),    # sword — polished steel
+		10, 300.0, 90.0)
+
+	# Violet — patrols the airspace over section C's break-climb.
+	_add_winged_demon(
+		1850.0, 120.0,
+		Color(0.55, 0.25, 0.85),   # body  — violet
+		Color(0.30, 0.10, 0.55),   # wings — indigo
+		Color(0.10, 0.06, 0.18),   # horns — obsidian purple
+		Color(0.85, 0.55, 1.0),    # eye   — arcane pink
+		Color(0.85, 0.80, 1.0),    # sword — moonlit violet
+		12, 360.0, 110.0)
+
+	# Emerald — patrols section E vertical climb airspace.
+	_add_winged_demon(
+		3300.0, 100.0,
+		Color(0.20, 0.75, 0.35),   # body  — emerald
+		Color(0.08, 0.40, 0.18),   # wings — forest
+		Color(0.05, 0.18, 0.08),   # horns — dark moss
+		Color(0.85, 1.0, 0.60),    # eye   — toxic green-yellow
+		Color(0.75, 1.0, 0.85),    # sword — jade
+		13, 360.0, 130.0)
+
+	# Obsidian — heaviest, guards the section G mixed-challenge airspace.
+	_add_winged_demon(
+		4860.0, 140.0,
+		Color(0.18, 0.20, 0.28),   # body  — obsidian
+		Color(0.08, 0.10, 0.16),   # wings — void
+		Color(0.05, 0.06, 0.10),   # horns — pitch
+		Color(0.40, 0.85, 1.0),    # eye   — frozen blue
+		Color(0.65, 0.90, 1.0),    # sword — icy steel
+		16, 420.0, 130.0)
 
 # -----------------------------------------------------------------------------
 # Background (parallax) + sky gradient
@@ -453,6 +498,21 @@ func _add_jet_trooper(x: float, y: float, hp: int = 9, patrol_w: float = 280.0, 
 	jt.patrol_width = patrol_w
 	jt.patrol_height = patrol_h
 	$Enemies.add_child(jt)
+
+func _add_winged_demon(x: float, y: float, body: Color, wing: Color, horn: Color, eye: Color, sword: Color, hp: int = 12, patrol_w: float = 320.0, patrol_h: float = 80.0) -> void:
+	# Winged mini-boss: flaps, dive-bombs, swings a sword.
+	var d := WINGED_DEMON_SCENE.instantiate() as WingedDemon
+	d.position = Vector2(x, y)
+	d.tint = body
+	d.wing_color = wing
+	d.wing_edge_color = wing.darkened(0.35)
+	d.horn_color = horn
+	d.eye_color = eye
+	d.sword_color = sword
+	d.max_health = hp
+	d.patrol_width = patrol_w
+	d.patrol_height = patrol_h
+	$Enemies.add_child(d)
 
 func _add_coin(x: float, y: float) -> void:
 	var c := COIN_SCENE.instantiate()
