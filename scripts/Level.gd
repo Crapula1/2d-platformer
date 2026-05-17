@@ -32,6 +32,8 @@ const ROCK_SCENE             := preload("res://scenes/props/Rock.tscn")
 const CLIFF_SCENE            := preload("res://scenes/props/Cliff.tscn")
 const BUSH_SCENE             := preload("res://scenes/props/Bush.tscn")
 const PALM_TREE_SCENE        := preload("res://scenes/props/PalmTree.tscn")
+const SQUIRREL_SCENE         := preload("res://scenes/critters/Squirrel.tscn")
+const RABBIT_SCENE           := preload("res://scenes/critters/Rabbit.tscn")
 
 const LEVEL_LEFT:    float =    -20.0
 const LEVEL_RIGHT:   float =  6020.0
@@ -106,6 +108,7 @@ func _ready() -> void:
 	_build_section_g_mixed_challenge()
 	_build_section_h_final_stretch()
 	_spawn_winged_demons()
+	_spawn_critters()
 	_setup_player_camera()
 
 func _spawn_winged_demons() -> void:
@@ -1252,3 +1255,35 @@ func _setup_player_camera() -> void:
 	cam.drag_vertical_enabled = true
 	cam.drag_top_margin = 0.18
 	cam.drag_bottom_margin = 0.30
+
+# -----------------------------------------------------------------------------
+# Atmospheric critters — purely cosmetic squirrels & rabbits.
+# -----------------------------------------------------------------------------
+func _spawn_critters() -> void:
+	# Squirrels — favor spans that have palm trees nearby
+	var squirrel_count: int = 8
+	for i in squirrel_count:
+		var span: Vector2 = GROUND_SPANS[i % GROUND_SPANS.size()]
+		var x: float = randf_range(span.x + 30.0, span.y - 30.0)
+		var sq := SQUIRREL_SCENE.instantiate()
+		sq.ground_y = GROUND_TOP
+		sq.min_x = span.x + 12.0
+		sq.max_x = span.y - 12.0
+		(sq as Node2D).position = Vector2(x, GROUND_TOP - 5.0)
+		(sq as CanvasItem).z_index = -1
+		add_child(sq)
+
+	# Rabbits — hop around, prefer slightly larger spans
+	var rabbit_count: int = 7
+	for i in rabbit_count:
+		var span: Vector2 = GROUND_SPANS[(i + 3) % GROUND_SPANS.size()]
+		if span.y - span.x < 220.0:
+			continue
+		var x: float = randf_range(span.x + 30.0, span.y - 30.0)
+		var rb := RABBIT_SCENE.instantiate()
+		rb.ground_y = GROUND_TOP
+		rb.min_x = span.x + 12.0
+		rb.max_x = span.y - 12.0
+		(rb as Node2D).position = Vector2(x, GROUND_TOP - 4.0)
+		(rb as CanvasItem).z_index = -1
+		add_child(rb)

@@ -15,7 +15,15 @@ extends Node2D
 @export var color_frond_hi: Color = Color(0.26, 0.56, 0.22)
 
 func _ready() -> void:
+	add_to_group("palm_tree")
 	_build()
+
+# How tall the trunk effectively is, used by squirrels deciding how high to climb.
+func get_climb_height() -> float:
+	var h: float = tree_height
+	if variant == 1: h *= 1.30
+	if variant == 2: h *= 0.78
+	return h
 
 func _build() -> void:
 	var h: float = tree_height

@@ -1,80 +1,80 @@
 extends Control
 
-const LOBBY_SCENE: String = "res://scenes/Lobby.tscn"
+const GAME_SCENE := "res://scenes/Main.tscn"
+const OPTIONS_SCENE := "res://scenes/OptionsMenu.tscn"
+const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 
+@onready var start_button: Button = $VBox/StartButton
+@onready var options_button: Button = $VBox/OptionsButton
+@onready var quit_button: Button = $VBox/QuitButton
+@onready var vbox: VBoxContainer = $VBox
+
+var host_button: Button
+var join_button: Button
 var name_edit: LineEdit
 var ip_edit: LineEdit
 var port_edit: LineEdit
 var status_label: Label
 
 func _ready() -> void:
+	start_button.pressed.connect(_on_start)
+	options_button.pressed.connect(_on_options)
+	quit_button.pressed.connect(_on_quit)
+	_build_multiplayer_ui()
+	start_button.grab_focus()
 	Net.connection_failed.connect(_on_connection_failed)
 	Net.disconnected.connect(_on_disconnected)
-	_build_ui()
 
-func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.06, 0.08, 0.13)
-	add_child(bg)
+func _build_multiplayer_ui() -> void:
+	# Append host/join controls under the existing VBox so the styled main
+	# menu layout is preserved.
+	host_button = Button.new()
+	host_button.custom_minimum_size = Vector2(140, 26)
+	host_button.text = "HOST"
+	host_button.add_theme_font_size_override("font_size", 14)
+	host_button.pressed.connect(_on_host_pressed)
+	vbox.add_child(host_button)
 
-	var vb := VBoxContainer.new()
-	vb.set_anchors_preset(Control.PRESET_CENTER)
-	vb.custom_minimum_size = Vector2(360, 0)
-	vb.position = Vector2(-180, -180)
-	vb.add_theme_constant_override("separation", 12)
-	add_child(vb)
+	join_button = Button.new()
+	join_button.custom_minimum_size = Vector2(140, 26)
+	join_button.text = "JOIN"
+	join_button.add_theme_font_size_override("font_size", 14)
+	join_button.pressed.connect(_on_join_pressed)
+	vbox.add_child(join_button)
 
-	var title := Label.new()
-	title.text = "2D PLATFORMER"
-	title.add_theme_font_size_override("font_size", 32)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
-	vb.add_child(title)
-
-	vb.add_child(_labeled("Name"))
 	name_edit = LineEdit.new()
+	name_edit.placeholder_text = "name"
 	name_edit.text = "Player"
 	name_edit.max_length = 16
-	vb.add_child(name_edit)
+	name_edit.custom_minimum_size = Vector2(140, 22)
+	vbox.add_child(name_edit)
 
-	vb.add_child(_labeled("Host IP (Join only)"))
 	ip_edit = LineEdit.new()
+	ip_edit.placeholder_text = "host ip (join only)"
 	ip_edit.text = "127.0.0.1"
-	vb.add_child(ip_edit)
+	ip_edit.custom_minimum_size = Vector2(140, 22)
+	vbox.add_child(ip_edit)
 
-	vb.add_child(_labeled("Port"))
 	port_edit = LineEdit.new()
+	port_edit.placeholder_text = "port"
 	port_edit.text = str(Net.DEFAULT_PORT)
-	vb.add_child(port_edit)
-
-	var host_btn := Button.new()
-	host_btn.text = "Host"
-	host_btn.custom_minimum_size = Vector2(0, 38)
-	host_btn.pressed.connect(_on_host_pressed)
-	vb.add_child(host_btn)
-
-	var join_btn := Button.new()
-	join_btn.text = "Join"
-	join_btn.custom_minimum_size = Vector2(0, 38)
-	join_btn.pressed.connect(_on_join_pressed)
-	vb.add_child(join_btn)
-
-	var quit_btn := Button.new()
-	quit_btn.text = "Quit"
-	quit_btn.pressed.connect(func(): get_tree().quit())
-	vb.add_child(quit_btn)
+	port_edit.custom_minimum_size = Vector2(140, 22)
+	vbox.add_child(port_edit)
 
 	status_label = Label.new()
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
-	vb.add_child(status_label)
+	vbox.add_child(status_label)
 
-func _labeled(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
-	return l
+func _on_start() -> void:
+	RunState.start_new_run()
+	get_tree().change_scene_to_file(GAME_SCENE)
+
+func _on_options() -> void:
+	get_tree().change_scene_to_file(OPTIONS_SCENE)
+
+func _on_quit() -> void:
+	get_tree().quit()
 
 func _player_name() -> String:
 	var n := name_edit.text.strip_edges()
@@ -99,7 +99,6 @@ func _on_join_pressed() -> void:
 
 func _on_connection_failed() -> void:
 	status_label.text = "Connection failed"
-	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 func _on_disconnected() -> void:
 	status_label.text = "Disconnected from host"

@@ -13,4 +13,4 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if body is Player:
 		triggered = true
-		emit_signal("reached")
+		reached.emit()

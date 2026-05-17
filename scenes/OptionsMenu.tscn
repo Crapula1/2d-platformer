@@ -1,0 +1,125 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/OptionsMenu.gd" id="1_options"]
+
+[node name="OptionsMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_options")
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.10, 1)
+
+[node name="Title" type="Label" parent="."]
+anchor_left = 0.0
+anchor_right = 1.0
+offset_top = 28.0
+offset_bottom = 60.0
+text = "OPTIONS"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.9, 0.95, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_right = 180.0
+offset_top = -130.0
+offset_bottom = 140.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+theme_override_constants/separation = 8
+
+[node name="ResRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="ResLabel" type="Label" parent="Panel/VBox/ResRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "Resolution"
+theme_override_font_sizes/font_size = 12
+
+[node name="ResOption" type="OptionButton" parent="Panel/VBox/ResRow"]
+custom_minimum_size = Vector2(180, 24)
+theme_override_font_sizes/font_size = 12
+
+[node name="ModeRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="ModeLabel" type="Label" parent="Panel/VBox/ModeRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "Window Mode"
+theme_override_font_sizes/font_size = 12
+
+[node name="ModeOption" type="OptionButton" parent="Panel/VBox/ModeRow"]
+custom_minimum_size = Vector2(180, 24)
+theme_override_font_sizes/font_size = 12
+
+[node name="VsyncRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="VsyncLabel" type="Label" parent="Panel/VBox/VsyncRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "V-Sync"
+theme_override_font_sizes/font_size = 12
+
+[node name="VsyncCheck" type="CheckButton" parent="Panel/VBox/VsyncRow"]
+theme_override_font_sizes/font_size = 12
+
+[node name="FpsRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="FpsLabel" type="Label" parent="Panel/VBox/FpsRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "FPS Limit"
+theme_override_font_sizes/font_size = 12
+
+[node name="FpsOption" type="OptionButton" parent="Panel/VBox/FpsRow"]
+custom_minimum_size = Vector2(180, 24)
+theme_override_font_sizes/font_size = 12
+
+[node name="MsaaRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="MsaaLabel" type="Label" parent="Panel/VBox/MsaaRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "Anti-Aliasing"
+theme_override_font_sizes/font_size = 12
+
+[node name="MsaaOption" type="OptionButton" parent="Panel/VBox/MsaaRow"]
+custom_minimum_size = Vector2(180, 24)
+theme_override_font_sizes/font_size = 12
+
+[node name="VolumeRow" type="HBoxContainer" parent="Panel/VBox"]
+theme_override_constants/separation = 12
+
+[node name="VolumeLabel" type="Label" parent="Panel/VBox/VolumeRow"]
+custom_minimum_size = Vector2(120, 0)
+text = "Master Volume"
+theme_override_font_sizes/font_size = 12
+
+[node name="VolumeSlider" type="HSlider" parent="Panel/VBox/VolumeRow"]
+custom_minimum_size = Vector2(140, 24)
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+
+[node name="VolumeValue" type="Label" parent="Panel/VBox/VolumeRow"]
+custom_minimum_size = Vector2(36, 0)
+text = "100%"
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="Spacer" type="Control" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 8)
+
+[node name="BackButton" type="Button" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 26)
+text = "BACK"
+theme_override_font_sizes/font_size = 14

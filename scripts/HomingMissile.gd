@@ -42,7 +42,7 @@ func net_setup(data: Dictionary) -> void:
 				target = n
 				break
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		# Clients follow synced position; flame still flickers locally.
 		if flame:

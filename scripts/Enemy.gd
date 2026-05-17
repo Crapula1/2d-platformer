@@ -12,6 +12,7 @@ var direction: int = 1
 var start_position: Vector2
 var is_dead: bool = false
 var stunned_timer: float = 0.0
+var _base_color: Color
 
 @onready var sprite: ColorRect = $Sprite
 @onready var wall_check: RayCast2D = $WallCheck
@@ -20,6 +21,7 @@ var stunned_timer: float = 0.0
 func _ready() -> void:
 	current_health = max_health
 	start_position = global_position
+	_base_color = sprite.color
 	add_to_group("enemy")
 
 func _physics_process(delta: float) -> void:
@@ -94,7 +96,7 @@ func net_flash() -> void:
 	sprite.color = Color.WHITE
 	get_tree().create_timer(0.1).timeout.connect(func():
 		if is_instance_valid(self) and not is_dead:
-			sprite.color = Color(0.9, 0.3, 0.3)
+			sprite.color = _base_color
 	)
 
 func _die() -> void:
@@ -105,4 +107,4 @@ func _die() -> void:
 	# Fall off screen
 	collision_layer = 0
 	collision_mask = 1
-	get_tree().create_timer(1.5).timeout.connect(queue_free)
+	EnemyFx.free_after(self, 1.5)

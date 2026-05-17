@@ -6,3 +6,56 @@
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("1_menu")
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.06, 0.10, 1)
+
+[node name="Title" type="Label" parent="."]
+anchor_left = 0.0
+anchor_right = 1.0
+offset_top = 48.0
+offset_bottom = 96.0
+text = "JUNGLE STRIKE"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 32
+theme_override_colors/font_color = Color(0.9, 0.95, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+
+[node name="Subtitle" type="Label" parent="."]
+anchor_left = 0.0
+anchor_right = 1.0
+offset_top = 96.0
+offset_bottom = 116.0
+text = "a 2d platformer"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.55, 0.7, 0.85, 1)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -70.0
+offset_right = 70.0
+offset_top = -50.0
+offset_bottom = 60.0
+theme_override_constants/separation = 8
+
+[node name="StartButton" type="Button" parent="VBox"]
+custom_minimum_size = Vector2(140, 26)
+text = "START"
+theme_override_font_sizes/font_size = 14
+
+[node name="OptionsButton" type="Button" parent="VBox"]
+custom_minimum_size = Vector2(140, 26)
+text = "OPTIONS"
+theme_override_font_sizes/font_size = 14
+
+[node name="QuitButton" type="Button" parent="VBox"]
+custom_minimum_size = Vector2(140, 26)
+text = "QUIT"
+theme_override_font_sizes/font_size = 14

@@ -1,6 +1,23 @@
 extends Node2D
 
-@onready var health_label: Label = $HUD/MarginContainer/VBoxContainer/HealthLabel
+@onready var health_bar: Control = $HUD/MarginContainer/VBoxContainer/HealthBar
+@onready var health_fill: ColorRect = $HUD/MarginContainer/VBoxContainer/HealthBar/Fill
+@onready var health_damage_lag: ColorRect = $HUD/MarginContainer/VBoxContainer/HealthBar/DamageLag
+@onready var health_label: Label = $HUD/MarginContainer/VBoxContainer/HealthBar/HealthLabel
+@onready var jetpack_fill: ColorRect = $HUD/MarginContainer/VBoxContainer/JetpackBar/Fill
+@onready var jetpack_label: Label = $HUD/MarginContainer/VBoxContainer/JetpackBar/FuelLabel
+@onready var weapon_label: Label = $HUD/MarginContainer/VBoxContainer/WeaponLabel
+
+const HEALTH_BAR_INNER_W: float = 188.0
+const JETPACK_BAR_INNER_W: float = 188.0
+const JETPACK_COL_FULL := Color(1.0, 0.78, 0.15)
+const JETPACK_COL_LOW  := Color(1.0, 0.42, 0.10)
+const HEALTH_COL_HIGH := Color(0.30, 0.85, 0.35)
+const HEALTH_COL_MID  := Color(0.95, 0.78, 0.20)
+const HEALTH_COL_LOW  := Color(0.95, 0.30, 0.20)
+
+var _health_fill_tween: Tween = null
+var _health_lag_tween: Tween = null
 @onready var score_label: Label = $HUD/MarginContainer/VBoxContainer/ScoreLabel
 @onready var grenade_label: Label = $HUD/MarginContainer/VBoxContainer/GrenadeLabel
 @onready var message_label: Label = $HUD/CenterContainer/MessageLabel
@@ -8,6 +25,13 @@ extends Node2D
 
 const LEVEL_SCENE := preload("res://scenes/Level.tscn")
 const PROC_LEVEL_SCENE := preload("res://scenes/ProceduralLevel.tscn")
+const PAUSE_MENU_SCENE := preload("res://scenes/PauseMenu.tscn")
+const COIN_SCENE := preload("res://scenes/Coin.tscn")
+const DEATH_PLANE_MARGIN: float = 160.0
+
+# Konami code easter egg: ↑↑↓↓←→←→ → coin shower
+const KONAMI := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT]
+var _konami_progress: int = 0
 
 const UPGRADES := [
 	{"id": "max_hp",      "name": "Combat Stims",  "desc": "+2 Max HP"},
@@ -27,10 +51,7 @@ const GRENADE_COLORS := [
 var player: Player = null
 var spawn_position: Vector2
 var _level: Node = null
-@onready var players_root: Node2D = $Players
-@onready var spawner: MultiplayerSpawner = $Players/MultiplayerSpawner
-@onready var projectiles_root: Node2D = $Projectiles
-@onready var projectile_spawner: MultiplayerSpawner = $Projectiles/MultiplayerSpawner
+var _pause_menu: CanvasLayer = null
 
 func _ready() -> void:
 	if not RunState.is_run_active:
@@ -44,15 +65,27 @@ func _ready() -> void:
 	add_child(_level)
 	move_child(_level, 0)
 
-	spawner.spawn_function = _spawn_player_node
-	projectile_spawner.spawn_function = _spawn_projectile_node
-	players_root.child_entered_tree.connect(_on_player_entered)
-	Net.player_late_joined.connect(_on_player_late_joined)
-	Net.player_list_changed.connect(_reconcile_players)
-
 	await get_tree().process_frame
 
-	spawn_position = _find_spawn_position()
+	player = get_tree().get_first_node_in_group("player") as Player
+	if player == null:
+		return
+
+	if RunState.depth > 0:
+		RunState.apply_to_player(player)
+
+	spawn_position = player.global_position
+
+	player.health_changed.connect(_on_health_changed)
+	player.score_changed.connect(_on_score_changed)
+	player.died.connect(_on_player_died)
+	player.grenade_changed.connect(_on_grenade_changed)
+	player.jetpack_changed.connect(_on_jetpack_changed)
+	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
+	player.weapon_changed.connect(_on_weapon_changed)
+	player.shotgun_shells_changed.connect(_on_shotgun_shells_changed)
+	_on_weapon_changed(Player.WEAPON_NAMES[player.weapon])
+	_on_shotgun_shells_changed(player._shotgun_shells, player.shotgun_capacity)
 
 	for goal in get_tree().get_nodes_in_group("goal"):
 		goal.reached.connect(_on_level_exit)
@@ -61,208 +94,95 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Lobby"
-
-	# Only the server (or solo, when no peer is configured) spawns players.
-	if multiplayer.is_server():
-		# Give clients a moment to load Main.tscn before spawning so their
-		# MultiplayerSpawner is ready to receive the replication messages.
-		if multiplayer.has_multiplayer_peer():
-			await get_tree().create_timer(0.5).timeout
-		_spawn_all_players()
-	else:
-		# Clients (including mid-run joiners) tell the host their Main is up.
-		Net.client_main_ready.rpc_id(1)
-
-func _find_spawn_position() -> Vector2:
-	if _level == null:
-		return Vector2(80, 380)
-	var m := _level.find_child("PlayerSpawn", true, false) as Node2D
-	return m.global_position if m != null else Vector2(80, 380)
-
-func _spawn_all_players() -> void:
-	# Solo / no-lobby fallback: synthesize a single host entry so the existing
-	# single-player flow keeps working when launching Main.tscn directly.
-	if Net.players.is_empty():
-		Net.players[1] = {"name": "Player", "character": "marine", "ready": true}
-
-	var i := 0
-	for peer_id in Net.players.keys():
-		if players_root.has_node("P_%d" % int(peer_id)):
-			i += 1
-			continue
-		var entry: Dictionary = Net.players[peer_id]
-		var offset := Vector2(i * 32, 0)
-		spawner.spawn({
-			"peer": int(peer_id),
-			"character": String(entry.character),
-			"x": spawn_position.x + offset.x,
-			"y": spawn_position.y + offset.y,
-		})
-		i += 1
-
-func _spawn_projectile_node(data: Dictionary) -> Node:
-	var kind: String = String(data.get("kind", "bullet"))
-	var scene_path := "res://scenes/HomingMissile.tscn" if kind == "missile" else "res://scenes/Bullet.tscn"
-	var n := (load(scene_path) as PackedScene).instantiate()
-	n.position = Vector2(float(data.get("x", 0.0)), float(data.get("y", 0.0)))
-	# Host stays the authority on projectiles so AI runs only there.
-	n.set_multiplayer_authority(1)
-	if n.has_method("net_setup"):
-		n.net_setup(data)
-	return n
-
-func spawn_projectile(data: Dictionary) -> void:
-	# Host-only entry point — enemy AI runs on the server, so callers are
-	# already authority-gated by their own _physics_process guards.
-	if not is_inside_tree():
-		return
-	if (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server():
-		projectile_spawner.spawn(data)
-
-func _spawn_player_node(data: Dictionary) -> Node:
-	var scene_path: String = "res://scenes/PlayerDemon.tscn" if String(data.get("character", "marine")) == "demon" else "res://scenes/Player.tscn"
-	var p := (load(scene_path) as PackedScene).instantiate()
-	var peer_id := int(data.get("peer", 1))
-	p.name = "P_%d" % peer_id
-	p.set_multiplayer_authority(peer_id)
-	p.position = Vector2(float(data.get("x", 80.0)), float(data.get("y", 380.0)))
-	return p
-
-func _reconcile_players() -> void:
-	# Free any spawned player nodes whose peer is no longer in the registry.
-	for child in players_root.get_children():
-		if not (child is Player):
-			continue
-		var n: String = child.name
-		if not n.begins_with("P_"):
-			continue
-		var pid: int = int(n.substr(2))
-		if not Net.players.has(pid):
-			child.queue_free()
-
-func _on_player_late_joined(peer_id: int) -> void:
-	# Host-only: a client just finished loading Main mid-run. Spawn them.
-	if not multiplayer.is_server():
-		return
-	# Existing players are already known to the new peer because the spawner
-	# replays its tracked children on connection. We only need to add the new
-	# peer's own player node here.
-	if players_root.has_node("P_%d" % peer_id):
-		return
-	var entry: Dictionary = Net.players.get(peer_id, {"character": "marine"})
-	spawner.spawn({
-		"peer": peer_id,
-		"character": String(entry.get("character", "marine")),
-		"x": spawn_position.x,
-		"y": spawn_position.y,
-	})
-
-func _on_player_entered(node: Node) -> void:
-	if not (node is Player):
-		return
-	var p := node as Player
-	# Wait for the node's _ready so authority is established.
-	await get_tree().process_frame
-	if p.is_multiplayer_authority():
-		player = p
-		if RunState.depth > 0:
-			RunState.apply_to_player(player)
-		player.health_changed.connect(_on_health_changed)
-		player.score_changed.connect(_on_score_changed)
-		player.died.connect(_on_player_died)
-		player.grenade_changed.connect(_on_grenade_changed)
-		_on_health_changed(player.current_health, player.max_health)
-		_on_score_changed(player.score)
-		_on_grenade_changed(Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
-		# Procedural levels: scope the local player's camera to the spawn room.
-		if _level != null and _level.has_method("apply_camera_limits_for_room"):
-			_level.apply_camera_limits_for_room(player, 0)
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  1/2: Weapon  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
 
 func _process(_delta: float) -> void:
-	if Input.is_action_just_pressed("restart"):
-		# Only host can restart the run in MP; in solo there's no peer and
-		# we just run the reload locally.
-		if multiplayer.is_server():
-			if multiplayer.has_multiplayer_peer():
-				rpc("net_reload_run")
-			else:
-				net_reload_run()
+	if Input.is_action_just_pressed("pause") and not is_instance_valid(_pause_menu):
+		_open_pause_menu()
 		return
 
-	# Host can press Esc to send everyone back to the lobby. Solo just quits
-	# to the main menu.
-	if Input.is_action_just_pressed("ui_cancel"):
-		if not multiplayer.has_multiplayer_peer():
-			get_tree().change_scene_to_file(Net.MENU_SCENE_PATH)
-		elif multiplayer.is_server():
-			rpc("net_return_to_lobby")
+	if Input.is_action_just_pressed("restart"):
+		RunState.start_new_run()
+		get_tree().reload_current_scene()
 		return
 
 	if player == null or player.is_dead:
 		return
 
-	if player.global_position.y > 820:
+	var death_y: float = get_viewport_rect().size.y + DEATH_PLANE_MARGIN
+	if player.global_position.y > death_y:
 		player.take_damage(99, player.global_position)
 
-@rpc("authority", "call_local", "reliable")
-func net_reload_run() -> void:
-	RunState.start_new_run()
-	get_tree().reload_current_scene()
-
-@rpc("authority", "call_local", "reliable")
-func net_apply_upgrade_and_advance(upg_id: String, new_seed: int) -> void:
-	if player != null:
-		RunState.save_from_player(player)
-	RunState.apply_upgrade(upg_id)
-	RunState.advance_depth()
-	Net.current_seed = new_seed
-	_fade_and_load()
-
-@rpc("authority", "call_local", "reliable")
-func net_show_upgrade(upgrade_ids: PackedStringArray) -> void:
-	_show_upgrade_screen_with(upgrade_ids)
-
-const _EXPLOSIVE_EFFECT_SCENE = preload("res://scenes/ExplosiveEffect.tscn")
-const _FIRE_ZONE_SCENE        = preload("res://scenes/FireZone.tscn")
-const _ELECTRIC_ZONE_SCENE    = preload("res://scenes/ElectricZone.tscn")
-
-@rpc("any_peer", "call_local", "reliable")
-func net_spawn_explosion(pos: Vector2) -> void:
-	# Every peer creates its own visual explosion; ExplosiveEffect already
-	# routes damage via request_damage, and is_invincible filters duplicates.
-	var fx := _EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
-
-@rpc("any_peer", "call_local", "reliable")
-func net_spawn_fire_zone(pos: Vector2) -> void:
-	var fx := _FIRE_ZONE_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
-
-@rpc("any_peer", "call_local", "reliable")
-func net_spawn_electric_zone(pos: Vector2) -> void:
-	var fx := _ELECTRIC_ZONE_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
-
-@rpc("authority", "call_local", "reliable")
-func net_return_to_lobby() -> void:
-	Net.in_game = false
-	for pid in Net.players:
-		Net.players[pid].ready = false
-	Net.player_list_changed.emit()
-	get_tree().change_scene_to_file("res://scenes/Lobby.tscn")
-
 func _on_health_changed(new_health: int, max_health: int) -> void:
-	var hearts := ""
-	for i in range(max_health):
-		hearts += "♥" if i < new_health else "♡"
-	health_label.text = "HP: " + hearts
+	var pct: float = 0.0 if max_health <= 0 else clampf(float(new_health) / float(max_health), 0.0, 1.0)
+	var target_w: float = HEALTH_BAR_INNER_W * pct
+	health_label.text = "HP %d / %d" % [maxi(new_health, 0), max_health]
+
+	# Color shifts: green > yellow > red as health drops
+	var target_color: Color
+	if pct > 0.55:
+		target_color = HEALTH_COL_HIGH.lerp(HEALTH_COL_MID, (1.0 - pct) / 0.45)
+	else:
+		target_color = HEALTH_COL_MID.lerp(HEALTH_COL_LOW, clampf((0.55 - pct) / 0.55, 0.0, 1.0))
+
+	# Fast fill tween — snappy on heal/damage
+	if _health_fill_tween != null and _health_fill_tween.is_valid():
+		_health_fill_tween.kill()
+	_health_fill_tween = create_tween().set_parallel(true)
+	_health_fill_tween.tween_property(health_fill, "offset_right", 2.0 + target_w, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_health_fill_tween.tween_property(health_fill, "color", target_color, 0.15)
+
+	# Slow damage-lag bar — yellow trail that catches up after a beat (only on damage)
+	var lag_right: float = health_damage_lag.offset_right
+	var fill_right: float = 2.0 + target_w
+	if lag_right > fill_right:
+		# Damage taken — pause briefly, then catch up
+		if _health_lag_tween != null and _health_lag_tween.is_valid():
+			_health_lag_tween.kill()
+		_health_lag_tween = create_tween()
+		_health_lag_tween.tween_interval(0.25)
+		_health_lag_tween.tween_property(health_damage_lag, "offset_right", fill_right, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	else:
+		# Heal — snap up with the fill
+		if _health_lag_tween != null and _health_lag_tween.is_valid():
+			_health_lag_tween.kill()
+		health_damage_lag.offset_right = fill_right
 
 func _on_score_changed(new_score: int) -> void:
 	score_label.text = "Coins: " + str(new_score)
+
+var _current_weapon_name: String = "RIFLE"
+var _shotgun_shells_now: int = 0
+var _shotgun_shells_max: int = 2
+
+func _on_weapon_changed(name: String) -> void:
+	_current_weapon_name = name
+	# Tint to match the projectile color so the HUD reads at a glance
+	if name == "SHOTGUN":
+		weapon_label.add_theme_color_override("font_color", Color(1.0, 0.72, 0.30))
+	else:
+		weapon_label.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+	_refresh_weapon_label()
+
+func _on_shotgun_shells_changed(shells: int, max_shells: int) -> void:
+	_shotgun_shells_now = shells
+	_shotgun_shells_max = max_shells
+	_refresh_weapon_label()
+
+func _refresh_weapon_label() -> void:
+	if _current_weapon_name == "SHOTGUN":
+		var pips := ""
+		for i in _shotgun_shells_max:
+			pips += "●" if i < _shotgun_shells_now else "○"
+		weapon_label.text = "» SHOTGUN [%s]" % pips
+	else:
+		weapon_label.text = "» " + _current_weapon_name
+
+func _on_jetpack_changed(fuel: float, max_fuel: float) -> void:
+	var pct: float = 0.0 if max_fuel <= 0.0 else clampf(fuel / max_fuel, 0.0, 1.0)
+	jetpack_fill.offset_right = 2.0 + JETPACK_BAR_INNER_W * pct
+	jetpack_fill.color = JETPACK_COL_LOW.lerp(JETPACK_COL_FULL, pct)
+	jetpack_label.text = "FUEL %d%%" % int(round(pct * 100.0))
 
 func _on_grenade_changed(type_name: String, count: int) -> void:
 	grenade_label.text = "[ " + type_name + "  x" + str(count) + " ]"
@@ -277,29 +197,14 @@ func _on_player_died() -> void:
 		player.set_physics_process(false)
 
 func _on_level_exit() -> void:
-	# In MP only the host drives level exits; clients see the upgrade screen
-	# replicated via RPC. Without a peer this still works as plain solo.
-	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
-		return
 	if player == null or player.is_dead:
 		return
+	RunState.save_from_player(player)
+	RunState.advance_depth()
+	player.set_physics_process(false)
+	_show_upgrade_screen()
 
-	var shuffled: Array = UPGRADES.duplicate()
-	shuffled.shuffle()
-	var choice_ids: PackedStringArray = PackedStringArray()
-	for upg in shuffled.slice(0, 3):
-		choice_ids.append(String(upg["id"]))
-
-	# Freeze the local player; the eventual scene reload re-spawns them.
-	if player != null:
-		player.set_physics_process(false)
-
-	if multiplayer.has_multiplayer_peer():
-		rpc("net_show_upgrade", choice_ids)
-	else:
-		net_show_upgrade(choice_ids)
-
-func _show_upgrade_screen_with(upgrade_ids: PackedStringArray) -> void:
+func _show_upgrade_screen() -> void:
 	var overlay := CanvasLayer.new()
 	overlay.layer = 10
 	add_child(overlay)
@@ -333,21 +238,15 @@ func _show_upgrade_screen_with(upgrade_ids: PackedStringArray) -> void:
 	title_label.offset_bottom = 160.0
 	overlay.add_child(title_label)
 
-	var by_id: Dictionary = {}
-	for u in UPGRADES:
-		by_id[u["id"]] = u
-	var choices: Array = []
-	for id in upgrade_ids:
-		if by_id.has(id):
-			choices.append(by_id[id])
-
-	var is_host_local: bool = (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server()
+	var shuffled: Array = UPGRADES.duplicate()
+	shuffled.shuffle()
+	var choices: Array = shuffled.slice(0, 3)
 
 	var btn_w: float = 155.0
 	var btn_h: float = 120.0
 	var spacing: float = 20.0
 	var total_w: float = btn_w * 3.0 + spacing * 2.0
-	var start_x: float = (1152.0 - total_w) * 0.5
+	var start_x: float = (get_viewport_rect().size.x - total_w) * 0.5
 	var btn_y: float = 220.0
 
 	for i in range(choices.size()):
@@ -371,31 +270,12 @@ func _show_upgrade_screen_with(upgrade_ids: PackedStringArray) -> void:
 		btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
 
 		var upg_id: String = upg["id"]
-		btn.disabled = not is_host_local
 		btn.pressed.connect(func():
+			RunState.apply_upgrade(upg_id)
 			overlay.queue_free()
-			# Host picks the next procedural seed so every peer's generation
-			# uses the same value after the reload.
-			var new_seed := randi()
-			if multiplayer.has_multiplayer_peer():
-				rpc("net_apply_upgrade_and_advance", upg_id, new_seed)
-			else:
-				net_apply_upgrade_and_advance(upg_id, new_seed)
+			_fade_and_load()
 		)
 		overlay.add_child(btn)
-
-	if not is_host_local:
-		var note := Label.new()
-		note.text = "Host is choosing..."
-		note.add_theme_font_size_override("font_size", 18)
-		note.add_theme_color_override("font_color", Color(0.8, 0.85, 1.0))
-		note.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-		note.add_theme_constant_override("outline_size", 3)
-		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		note.set_anchors_preset(Control.PRESET_TOP_WIDE)
-		note.offset_top = 360.0
-		note.offset_bottom = 400.0
-		overlay.add_child(note)
 
 func _fade_and_load() -> void:
 	var fade_layer := CanvasLayer.new()
@@ -412,6 +292,49 @@ func _fade_and_load() -> void:
 	tween.tween_callback(func():
 		get_tree().reload_current_scene()
 	)
+
+func _open_pause_menu() -> void:
+	_pause_menu = PAUSE_MENU_SCENE.instantiate()
+	add_child(_pause_menu)
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KONAMI[_konami_progress]:
+			_konami_progress += 1
+			if _konami_progress >= KONAMI.size():
+				_konami_progress = 0
+				_trigger_coin_shower()
+		else:
+			# Resync — current key might be the first of a new attempt
+			_konami_progress = 1 if event.keycode == KONAMI[0] else 0
+
+func _trigger_coin_shower() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	message_label.text = "★ JUNGLE BOUNTY ★"
+	message_label.modulate = Color(1.0, 0.9, 0.3)
+	get_tree().create_timer(1.6).timeout.connect(func() -> void:
+		if is_instance_valid(message_label):
+			message_label.text = ""
+			message_label.modulate = Color.WHITE
+	)
+	var origin: Vector2 = player.global_position
+	for i in 18:
+		var coin := COIN_SCENE.instantiate() as Node2D
+		_level.add_child(coin)
+		var spread: float = randf_range(-200.0, 200.0)
+		var sky: Vector2 = origin + Vector2(spread, -240.0 - randf_range(0.0, 80.0))
+		var ground: Vector2 = origin + Vector2(spread, -8.0)
+		coin.global_position = sky
+		# Fall to ground level — set start_y after the tween finishes so the
+		# bob animation in Coin._process kicks in from the right baseline.
+		var tw := coin.create_tween()
+		tw.tween_property(coin, "global_position", ground, randf_range(0.55, 0.85)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_callback(func() -> void:
+			if is_instance_valid(coin):
+				coin.start_y = coin.position.y
+				coin.time = 0.0
+		)
 
 func _make_stylebox(color: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()

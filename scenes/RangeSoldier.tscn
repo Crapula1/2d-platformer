@@ -123,7 +123,7 @@ color = Color(1.0, 0.85, 0.0, 1)
 shape = SubResource("body_shape")
 
 [node name="SightRay" type="RayCast2D" parent="."]
-target_position = Vector2(220, 0)
+target_position = Vector2(320, 0)
 collision_mask = 3
 
 [node name="WallCheck" type="RayCast2D" parent="."]
