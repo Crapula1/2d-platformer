@@ -14,14 +14,15 @@ func _ready() -> void:
 	_fade_out()
 
 func _hit(body: Node) -> void:
-	if not body.has_method("take_damage"):
-		return
-	if body is Player:
-		body.take_damage(PLAYER_DAMAGE, global_position)
+	var dmg: int = PLAYER_DAMAGE if body is Player else ENEMY_DAMAGE
+	if body.has_method("request_damage"):
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+	elif body.has_method("take_damage"):
+		body.take_damage(dmg, global_position)
 	else:
-		body.take_damage(ENEMY_DAMAGE, global_position)
-		if body.has_method("stun"):
-			body.stun(STUN_DURATION)
+		return
+	if not (body is Player) and body.has_method("stun"):
+		body.stun(STUN_DURATION)
 
 func _build_visuals() -> void:
 	# Core white-blue flash

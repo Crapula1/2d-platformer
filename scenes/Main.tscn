@@ -5,6 +5,18 @@
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 
+[node name="Players" type="Node2D" parent="."]
+
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="Players"]
+spawn_path = NodePath("..")
+_spawnable_scenes = PackedStringArray("res://scenes/Player.tscn", "res://scenes/PlayerDemon.tscn")
+
+[node name="Projectiles" type="Node2D" parent="."]
+
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="Projectiles"]
+spawn_path = NodePath("..")
+_spawnable_scenes = PackedStringArray("res://scenes/HomingMissile.tscn", "res://scenes/Bullet.tscn")
+
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="MarginContainer" type="MarginContainer" parent="HUD"]

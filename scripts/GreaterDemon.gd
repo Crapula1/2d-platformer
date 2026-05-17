@@ -133,6 +133,10 @@ func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		if has_method("_update_visuals"):
+			_update_visuals(delta)
+		return
 	if is_dead:
 		velocity.y += gravity * delta
 		velocity.x = move_toward(velocity.x, 0, 200 * delta)
@@ -301,9 +305,23 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 		stagger_timer = stagger_time
 	var knockback: Vector2 = (global_position - source_pos).normalized() * 120.0
 	velocity = velocity * 0.65 + knockback
-	_flash_hit()
+	net_flash.rpc()
 	if current_health <= 0:
+		_net_kill.rpc()
+
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
+@rpc("authority", "call_local", "reliable")
+func _net_kill() -> void:
+	if not is_dead:
 		_die()
+
+@rpc("authority", "call_local", "reliable")
+func net_flash() -> void:
+	_flash_hit()
 
 func stun(duration: float) -> void:
 	if is_dead: return
@@ -346,15 +364,15 @@ func _die() -> void:
 
 func _on_sword_hit(body: Node) -> void:
 	if _hit_this_swing: return
-	if body is Player and body.has_method("take_damage"):
-		body.take_damage(cleave_damage, global_position)
+	if body is Player and body.has_method("request_damage"):
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), cleave_damage, global_position)
 		_hit_this_swing = true
 
 func _on_sword_area(area: Area2D) -> void:
 	if _hit_this_swing: return
 	var p := area.get_parent()
-	if p is Player and p.has_method("take_damage"):
-		p.take_damage(cleave_damage, global_position)
+	if p is Player and p.has_method("request_damage"):
+		p.request_damage.rpc_id(p.get_multiplayer_authority(), cleave_damage, global_position)
 		_hit_this_swing = true
 
 func _update_visuals(delta: float) -> void:

@@ -77,6 +77,8 @@ func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		return
 	if is_dead:
 		velocity.y += gravity * delta
 		velocity.x = move_toward(velocity.x, 0, 200 * delta)
@@ -237,32 +239,42 @@ func _try_fire() -> void:
 
 func _fire_missile() -> void:
 	if player == null: return
-	var m := MISSILE_SCENE.instantiate() as HomingMissile
-	get_parent().add_child(m)
-	m.global_position = gun_muzzle.global_position
-	# Launch up-and-out so the missile arcs in.
-	var to_p: Vector2 = (player.global_position - gun_muzzle.global_position).normalized()
+	var muzzle: Vector2 = gun_muzzle.global_position
+	var to_p: Vector2 = (player.global_position - muzzle).normalized()
 	var launch: Vector2 = (to_p + Vector2(0.0, -0.6)).normalized() * 140.0
-	m.setup(launch, player, bullet_damage)
+	var main := get_tree().current_scene
+	if main != null and main.has_method("spawn_projectile"):
+		main.spawn_projectile({
+			"kind": "missile",
+			"x": muzzle.x, "y": muzzle.y,
+			"vx": launch.x, "vy": launch.y,
+			"target_peer": player.get_multiplayer_authority(),
+			"damage": bullet_damage,
+		})
 	# Slight recoil + visor flash for "telegraph"
 	velocity += -to_p * 60.0
 	visor.color = Color(1.0, 0.9, 0.4)
 
 func _shoot() -> void:
 	if player == null: return
-	var bullet := BULLET_SCENE.instantiate() as Area2D
-	get_parent().add_child(bullet)
-	bullet.global_position = gun_muzzle.global_position
-
+	var muzzle: Vector2 = gun_muzzle.global_position
 	# Lead the target.
-	var to_p: Vector2 = player.global_position - gun_muzzle.global_position
+	var to_p: Vector2 = player.global_position - muzzle
 	var t: float = clampf(to_p.length() / bullet_speed, 0.0, 0.7)
 	var predicted: Vector2 = player.global_position + player.velocity * t
-	var aim: Vector2 = (predicted - gun_muzzle.global_position).normalized()
+	var aim: Vector2 = (predicted - muzzle).normalized()
 	if spread > 0.0:
 		var ang: float = aim.angle() + randf_range(-spread, spread)
 		aim = Vector2(cos(ang), sin(ang))
-	bullet.setup(aim, bullet_speed, bullet_damage)
+	var vel: Vector2 = aim * bullet_speed
+	var main := get_tree().current_scene
+	if main != null and main.has_method("spawn_projectile"):
+		main.spawn_projectile({
+			"kind": "bullet",
+			"x": muzzle.x, "y": muzzle.y,
+			"vx": vel.x, "vy": vel.y,
+			"damage": bullet_damage,
+		})
 
 func _has_line_of_sight(dist: float) -> bool:
 	if player == null or dist > sight_range:
@@ -284,9 +296,23 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 	var knockback: Vector2 = (global_position - source_pos).normalized() * 180.0
 	velocity = velocity * 0.4 + knockback
-	_flash_hit()
+	net_flash.rpc()
 	if current_health <= 0:
+		_net_kill.rpc()
+
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
+@rpc("authority", "call_local", "reliable")
+func _net_kill() -> void:
+	if not is_dead:
 		_die()
+
+@rpc("authority", "call_local", "reliable")
+func net_flash() -> void:
+	_flash_hit()
 
 func stun(duration: float) -> void:
 	if is_dead: return

@@ -30,7 +30,24 @@ func setup(launch_velocity: Vector2, tgt: Node2D, dmg: int = 1) -> void:
 	damage = dmg
 	rotation = velocity.angle()
 
+func net_setup(data: Dictionary) -> void:
+	# Called by Main's projectile spawner on every peer with identical data.
+	velocity = Vector2(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)))
+	damage = int(data.get("damage", 1))
+	rotation = velocity.angle()
+	var target_peer: int = int(data.get("target_peer", 0))
+	if target_peer != 0:
+		for n in get_tree().get_nodes_in_group("player"):
+			if n.get_multiplayer_authority() == target_peer:
+				target = n
+				break
+
 func _process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		# Clients follow synced position; flame still flickers locally.
+		if flame:
+			flame.scale = Vector2(0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.05), 1.0)
+		return
 	_age += delta
 	lifetime -= delta
 	if lifetime <= 0.0:
@@ -56,12 +73,19 @@ func _process(delta: float) -> void:
 		flame.scale = Vector2(0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.05), 1.0)
 
 func _on_body_entered(_b: Node) -> void:
+	if not is_multiplayer_authority():
+		return
 	_explode()
 
 func _explode() -> void:
-	var fx := EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	get_parent().add_child(fx)
-	fx.global_position = global_position
+	# Authority only. Broadcast the visual effect to all peers via Main; the
+	# spawner will replicate this node's despawn to clients.
+	var main := get_tree().current_scene
+	if main != null and main.has_method("net_spawn_explosion"):
+		if multiplayer.has_multiplayer_peer():
+			main.rpc("net_spawn_explosion", global_position)
+		else:
+			main.net_spawn_explosion(global_position)
 	queue_free()
 
 func get_damage() -> int:

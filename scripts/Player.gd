@@ -3,9 +3,11 @@ class_name Player
 
 # Movement
 @export var speed: float = 180.0
-@export var acceleration: float = 1200.0
-@export var friction: float = 1000.0
-@export var air_friction: float = 200.0
+@export var acceleration: float = 1800.0
+@export var turn_acceleration: float = 2600.0  # snappier reverses
+@export var friction: float = 1700.0
+@export var air_acceleration: float = 1300.0
+@export var air_friction: float = 350.0
 @export var crouch_speed_mult: float = 0.45
 
 # Jumping
@@ -39,11 +41,21 @@ class_name Player
 @export var slide_cooldown: float = 0.65
 @export var slide_threshold: float = 85.0
 
+# Slide dash (dedicated key — works in air & ground, full i-frames)
+@export var dash_speed: float = 540.0
+@export var dash_duration: float = 0.18
+@export var dash_cooldown: float = 0.7
+
+# Roll (ground dodge, i-frames, on cooldown)
+@export var roll_speed: float = 340.0
+@export var roll_duration: float = 0.42
+@export var roll_cooldown: float = 0.95
+
 # Sprint
 @export var sprint_multiplier: float = 1.65
 
 # Shooting
-@export var bullet_speed: float = 500.0
+@export var bullet_speed: float = 900.0
 @export var shoot_cooldown: float = 0.18
 @export var bullet_damage: int = 1
 
@@ -72,6 +84,14 @@ var slide_dir: float = 1.0
 var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
 var is_wall_sliding: bool = false
+var is_dashing: bool = false
+var _dash_timer: float = 0.0
+var _dash_cd: float = 0.0
+var _dash_dir: float = 1.0
+var is_rolling: bool = false
+var _roll_timer: float = 0.0
+var _roll_cd: float = 0.0
+var _roll_dir: float = 1.0
 var _jetpack_armed: bool = false
 var _jetpack_fuel: float = 0.0
 var _is_jetpacking: bool = false
@@ -100,7 +120,22 @@ var grenade_cooldown_base: float = 0.85
 var _grenade_cooldown: float = 0.0
 var _shoot_timer: float = 0.0
 
-@onready var sprite: AnimatedSprite2D = $Sprite
+# Visual: $Sprite may be an AnimatedSprite2D (marine) or a plain Node2D
+# wrapper around custom polygons (demon). _facing_node is what gets flipped.
+@export var base_scale: Vector2 = Vector2(0.3, 0.3)
+const _SCALE_DEFAULT := Vector2(1.0, 1.0)
+const _SCALE_SLIDE := Vector2(1.35, 0.4)
+const _SCALE_CROUCH := Vector2(1.12, 0.52)
+const _SCALE_ATTACK := Vector2(1.28, 1.0)
+const _SCALE_WALL := Vector2(1.15, 0.9)
+const _SCALE_JUMP_UP := Vector2(0.88, 1.15)
+const _SCALE_JUMP_DOWN := Vector2(1.12, 0.88)
+const _SCALE_DJ := Vector2(1.3, 0.7)
+const _SCALE_RECOIL := Vector2(0.867, 1.133)
+
+@onready var sprite: Node2D = $Sprite
+var _anim_sprite: AnimatedSprite2D = null
+var _facing_node: Node2D = null
 @onready var stand_shape: CollisionShape2D = $CollisionShape2D
 @onready var crouch_shape: CollisionShape2D = $CrouchShape
 @onready var ceiling_ray: RayCast2D = $CeilingRay
@@ -114,14 +149,29 @@ func _ready() -> void:
 	attack_shape.disabled = true
 	crouch_shape.disabled = true
 	add_to_group("player")
-	attack_area.body_entered.connect(_on_attack_hit)
-	hurtbox.area_entered.connect(_on_hurtbox_area_entered)
-	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
+	# Resolve visual structure (AnimatedSprite2D vs Node2D wrapper).
+	if sprite is AnimatedSprite2D:
+		_anim_sprite = sprite as AnimatedSprite2D
+		_facing_node = sprite
+	else:
+		_facing_node = sprite.get_node_or_null("Facing") as Node2D
+		if _facing_node == null:
+			_facing_node = sprite
+	# Camera + hit hooks belong to the local authority only.
+	_cam = get_node_or_null("Camera2D") as Camera2D
+	if _cam != null:
+		if is_multiplayer_authority():
+			_cam.make_current()
+		else:
+			_cam.enabled = false
+	if is_multiplayer_authority():
+		attack_area.body_entered.connect(_on_attack_hit)
+		hurtbox.area_entered.connect(_on_hurtbox_area_entered)
+		hurtbox.body_entered.connect(_on_hurtbox_body_entered)
 	emit_signal("health_changed", current_health, max_health)
 	emit_signal("score_changed", score)
 	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
 	emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
-	_cam = get_node_or_null("Camera2D") as Camera2D
 	_jet_flame = Polygon2D.new()
 	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
 	_jet_flame.polygon = PackedVector2Array([
@@ -133,6 +183,11 @@ func _ready() -> void:
 	add_child(_jet_flame)
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		# Non-local players: position/state come from MultiplayerSynchronizer.
+		# Just refresh visuals to reflect synced state.
+		_update_sprite(delta)
+		return
 	if is_dead:
 		velocity.x = move_toward(velocity.x, 0, friction * delta)
 		if not is_on_floor():
@@ -141,6 +196,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_update_timers(delta)
+	_handle_dash_input()
+	_handle_roll_input()
 	_handle_gravity(delta)
 	_handle_jump_input()
 	_handle_crouch_input()
@@ -177,6 +234,18 @@ func _update_timers(delta: float) -> void:
 		_grenade_cooldown -= delta
 	if _shoot_timer > 0:
 		_shoot_timer -= delta
+	if _dash_cd > 0:
+		_dash_cd -= delta
+	if _roll_cd > 0:
+		_roll_cd -= delta
+	if is_dashing:
+		_dash_timer -= delta
+		if _dash_timer <= 0:
+			_end_dash()
+	if is_rolling:
+		_roll_timer -= delta
+		if _roll_timer <= 0:
+			_end_roll()
 	if is_sliding:
 		slide_timer -= delta
 		if slide_timer <= 0:
@@ -204,6 +273,9 @@ func _update_buffs(delta: float) -> void:
 		active_buffs.erase(key)
 
 func _handle_gravity(delta: float) -> void:
+	if is_dashing:
+		velocity.y = 0.0
+		return
 	if is_on_floor():
 		return
 	if is_wall_sliding:
@@ -246,7 +318,7 @@ func _handle_jump_input() -> void:
 		velocity.y *= jump_cut_multiplier
 
 func _handle_crouch_input() -> void:
-	if is_sliding:
+	if is_sliding or is_dashing or is_rolling:
 		return
 
 	if Input.is_action_just_pressed("crouch") and is_on_floor():
@@ -276,6 +348,52 @@ func _end_slide() -> void:
 	if not Input.is_action_pressed("crouch") and _can_stand():
 		_set_crouching(false)
 
+func _handle_dash_input() -> void:
+	if Input.is_action_just_pressed("dash") and _dash_cd <= 0 and not is_dashing and not is_rolling and not is_dead:
+		_start_dash()
+
+func _handle_roll_input() -> void:
+	if Input.is_action_just_pressed("roll") and _roll_cd <= 0 and not is_rolling and not is_dashing and is_on_floor() and not is_dead:
+		_start_roll()
+
+func _start_dash() -> void:
+	is_dashing = true
+	_dash_timer = dash_duration
+	_dash_cd = dash_cooldown
+	var input_dir: float = Input.get_axis("move_left", "move_right")
+	_dash_dir = input_dir if input_dir != 0.0 else (1.0 if facing_right else -1.0)
+	facing_right = _dash_dir > 0.0
+	velocity.x = _dash_dir * dash_speed
+	velocity.y = 0.0
+	is_invincible = true
+	invincibility_timer = maxf(invincibility_timer, dash_duration + 0.05)
+	if is_sliding:
+		_end_slide()
+
+func _end_dash() -> void:
+	is_dashing = false
+	# Preserve a chunk of momentum so it feels fluid rather than a hard stop.
+	velocity.x = _dash_dir * dash_speed * 0.55
+
+func _start_roll() -> void:
+	is_rolling = true
+	_roll_timer = roll_duration
+	_roll_cd = roll_cooldown
+	var input_dir: float = Input.get_axis("move_left", "move_right")
+	_roll_dir = input_dir if input_dir != 0.0 else (1.0 if facing_right else -1.0)
+	facing_right = _roll_dir > 0.0
+	velocity.x = _roll_dir * roll_speed
+	_set_crouching(true)
+	is_invincible = true
+	invincibility_timer = maxf(invincibility_timer, roll_duration + 0.05)
+	if is_sliding:
+		_end_slide()
+
+func _end_roll() -> void:
+	is_rolling = false
+	if not Input.is_action_pressed("crouch") and _can_stand():
+		_set_crouching(false)
+
 func _set_crouching(value: bool) -> void:
 	is_crouching = value
 	stand_shape.set_deferred("disabled", value)
@@ -285,6 +403,12 @@ func _can_stand() -> bool:
 	return not ceiling_ray.is_colliding()
 
 func _handle_horizontal_movement(delta: float) -> void:
+	if is_dashing:
+		velocity.x = _dash_dir * dash_speed
+		return
+	if is_rolling:
+		velocity.x = _roll_dir * roll_speed
+		return
 	if is_sliding:
 		# Decelerate smoothly through the slide
 		velocity.x = move_toward(velocity.x, slide_dir * (slide_speed * 0.4), 110.0 * delta)
@@ -298,14 +422,21 @@ func _handle_horizontal_movement(delta: float) -> void:
 		eff_speed *= crouch_speed_mult
 
 	if direction != 0:
-		velocity.x = move_toward(velocity.x, direction * eff_speed, acceleration * delta)
+		var grounded := is_on_floor()
+		var changing_dir := signf(velocity.x) != 0.0 and signf(velocity.x) != signf(direction)
+		var accel: float
+		if grounded:
+			accel = turn_acceleration if changing_dir else acceleration
+		else:
+			accel = air_acceleration * (1.4 if changing_dir else 1.0)
+		velocity.x = move_toward(velocity.x, direction * eff_speed, accel * delta)
 		facing_right = direction > 0
 	else:
 		var f := friction if is_on_floor() else air_friction
 		velocity.x = move_toward(velocity.x, 0, f * delta)
 
 func _update_wall_slide() -> void:
-	if is_on_floor() or is_crouching or is_sliding:
+	if is_on_floor() or is_crouching or is_sliding or is_dashing or is_rolling:
 		is_wall_sliding = false
 		return
 	if not is_on_wall() or velocity.y <= 0:
@@ -319,6 +450,8 @@ func _update_wall_slide() -> void:
 		facing_right = wn.x < 0.0
 
 func _handle_jump_logic() -> void:
+	if is_dashing or is_rolling:
+		return
 	if jump_buffer_timer > 0:
 		if is_wall_sliding:
 			var wn := get_wall_normal()
@@ -353,7 +486,7 @@ func _handle_grenade_input() -> void:
 
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
-	get_parent().add_child(g)
+	get_tree().current_scene.add_child(g)
 	g.global_position = global_position + Vector2(0, -10)
 	var dir: float = 1.0 if facing_right else -1.0
 	g.setup(Grenade.Type.values()[grenade_type], Vector2(dir * throw_force, -throw_force * 0.65))
@@ -389,10 +522,12 @@ func _end_attack() -> void:
 	sprite.modulate = _get_base_modulate()
 
 func _on_attack_hit(body: Node) -> void:
-	if body.has_method("take_damage"):
-		var dmg: int = int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
-		if _slide_bash:
-			dmg = int(dmg * 1.6)
+	var dmg: int = int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+	if _slide_bash:
+		dmg = int(dmg * 1.6)
+	if body.has_method("request_damage"):
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+	elif body.has_method("take_damage"):
 		body.take_damage(dmg, global_position)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
@@ -421,7 +556,15 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 		invincibility_timer = duration
 	sprite.modulate = _get_base_modulate()
 
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	# Route incoming damage through the player's owning peer.
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
 func take_damage(amount: int, source_pos: Vector2) -> void:
+	if not is_multiplayer_authority():
+		return
 	if is_invincible or is_dead:
 		return
 	current_health -= amount
@@ -439,7 +582,8 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 func _die() -> void:
 	is_dead = true
-	sprite.stop()
+	if _anim_sprite != null:
+		_anim_sprite.stop()
 	sprite.modulate = Color(0.5, 0.5, 0.5)
 	_apply_shake(12.0)
 	emit_signal("died")
@@ -472,37 +616,51 @@ func _update_sprite(delta: float) -> void:
 		base.a = sprite.modulate.a
 		sprite.modulate = base
 
-	sprite.flip_h = facing_right
+	_set_facing(facing_right)
+	var anim_name: StringName = &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
+	_play_anim(anim_name)
 
-	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
-	if sprite.animation != anim:
-		sprite.play(anim)
-
-	var target_scale: Vector2
+	var target_mul: Vector2
 	var target_y: float
 
-	if is_sliding:
-		target_scale = Vector2(0.405, 0.12)
+	if is_sliding or is_rolling:
+		target_mul = _SCALE_SLIDE
 		target_y = 8.4
 	elif is_crouching:
-		target_scale = Vector2(0.336, 0.156)
+		target_mul = _SCALE_CROUCH
 		target_y = 6.7
 	elif is_attacking:
-		target_scale = Vector2(0.384, 0.3)
+		target_mul = _SCALE_ATTACK
 		target_y = 0.0
 	elif is_wall_sliding:
-		target_scale = Vector2(0.345, 0.27)
+		target_mul = _SCALE_WALL
 		target_y = 0.0
 	elif not is_on_floor():
-		target_scale = Vector2(0.264, 0.345) if velocity.y < 0 else Vector2(0.336, 0.264)
+		target_mul = _SCALE_JUMP_UP if velocity.y < 0 else _SCALE_JUMP_DOWN
 		target_y = 0.0
 	else:
-		target_scale = Vector2(0.3, 0.3)
+		target_mul = _SCALE_DEFAULT
 		target_y = 0.0
 
+	var target_scale: Vector2 = target_mul * base_scale
 	var t := minf(delta * 22.0, 1.0)
 	sprite.scale = sprite.scale.lerp(target_scale, t)
 	sprite.position.y = lerpf(sprite.position.y, target_y, t)
+
+func _set_facing(face_right: bool) -> void:
+	if _anim_sprite != null:
+		_anim_sprite.flip_h = face_right
+		return
+	var s := absf(_facing_node.scale.x)
+	if s == 0.0:
+		s = 1.0
+	_facing_node.scale.x = s if face_right else -s
+
+func _play_anim(anim: StringName) -> void:
+	if _anim_sprite == null:
+		return
+	if _anim_sprite.animation != anim:
+		_anim_sprite.play(anim)
 
 func _handle_shoot_input() -> void:
 	if is_dead or _shoot_timer > 0:
@@ -513,15 +671,23 @@ func _handle_shoot_input() -> void:
 
 func _shoot() -> void:
 	var mouse_pos := get_global_mouse_position()
-	var muzzle := global_position + Vector2(18.0 if facing_right else -18.0, -8.0)
-	var dir := (mouse_pos - muzzle).normalized()
+	var dir := (mouse_pos - global_position).normalized()
 	facing_right = dir.x >= 0.0
+	var muzzle := global_position + Vector2(18.0 if facing_right else -18.0, -8.0)
 
 	var bullet := PLAYER_BULLET_SCENE.instantiate()
-	get_parent().add_child(bullet)
+	get_tree().current_scene.add_child(bullet)
 	bullet.global_position = muzzle
 	bullet.setup(dir, bullet_speed, bullet_damage)
-	sprite.scale = Vector2(0.26, 0.34)
+	sprite.scale = _SCALE_RECOIL * base_scale
 
 func _spawn_double_jump_effect() -> void:
-	sprite.scale = Vector2(0.39, 0.21)
+	sprite.scale = _SCALE_DJ * base_scale
+
+func set_camera_limits(left: int, top: int, right: int, bottom: int) -> void:
+	if _cam == null:
+		return
+	_cam.limit_left = left
+	_cam.limit_top = top
+	_cam.limit_right = right
+	_cam.limit_bottom = bottom

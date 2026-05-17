@@ -26,6 +26,8 @@ var _cam: Camera2D = null
 var _is_transitioning: bool = false
 
 func _ready() -> void:
+	# Use the host-broadcast seed so every peer generates identical rooms.
+	seed(Net.current_seed)
 	var depth: int = RunState.depth
 	var num_rooms: int = clampi(3 + depth, 3, 8)
 	var theme := _pick_theme(depth)
@@ -55,8 +57,7 @@ func do_room_transition(player: Player, target_pos: Vector2, target_room: int) -
 	tw.tween_callback(func() -> void:
 		player.global_position = target_pos
 		player.velocity = Vector2.ZERO
-		if _cam != null and target_room >= 0 and target_room < _rooms.size():
-			_set_camera_limits(_rooms[target_room]["offset"])
+		apply_camera_limits_for_room(player, target_room)
 		player.set_physics_process(true)
 		var tw2 := create_tween()
 		tw2.tween_property(black, "color", Color(0, 0, 0, 0), 0.22)
@@ -639,15 +640,14 @@ func _spawn_exit_in_room(plats: Array) -> void:
 # Player spawn and camera
 # ---------------------------------------------------------------------------
 func _spawn_player_in_room(room_idx: int) -> void:
+	# In MP the actual Player is created by Main's MultiplayerSpawner. We only
+	# place a PlayerSpawn marker here so Main can position spawns correctly.
 	var offset: Vector2 = _rooms[room_idx]["offset"]
-	var player := PLAYER_SCENE.instantiate() as Player
-	player.position = offset + Vector2(float(WALL_W) + 60.0, float(ROOM_H - FLOOR_H) - 20.0)
-	add_child(player)
-	_player = player
-
-	_cam = player.get_node_or_null("Camera2D") as Camera2D
-	if _cam != null:
-		_set_camera_limits(offset)
+	var spawn_pos: Vector2 = offset + Vector2(float(WALL_W) + 60.0, float(ROOM_H - FLOOR_H) - 20.0)
+	var marker := Marker2D.new()
+	marker.name = "PlayerSpawn"
+	marker.position = spawn_pos
+	add_child(marker)
 
 func _set_camera_limits(offset: Vector2) -> void:
 	if _cam == null:
@@ -656,6 +656,17 @@ func _set_camera_limits(offset: Vector2) -> void:
 	_cam.limit_right  = int(offset.x) + ROOM_W + 50
 	_cam.limit_top    = int(offset.y) - 50
 	_cam.limit_bottom = int(offset.y) + ROOM_H + 50
+
+func apply_camera_limits_for_room(p: Player, room_idx: int) -> void:
+	if p == null or room_idx < 0 or room_idx >= _rooms.size():
+		return
+	var offset: Vector2 = _rooms[room_idx]["offset"]
+	p.set_camera_limits(
+		int(offset.x) - 50,
+		int(offset.y) - 50,
+		int(offset.x) + ROOM_W + 50,
+		int(offset.y) + ROOM_H + 50,
+	)
 
 # ---------------------------------------------------------------------------
 # Platform helpers

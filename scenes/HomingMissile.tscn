@@ -1,6 +1,14 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/HomingMissile.gd" id="1_missile"]
+
+[sub_resource type="SceneReplicationConfig" id="ReplConfig_missile"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 2
 
 [sub_resource type="RectangleShape2D" id="missile_shape"]
 size = Vector2(10, 5)
@@ -29,3 +37,6 @@ polygon = PackedVector2Array(0, -2, 0, 2, -4, 1, -8, 0, -4, -1)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("missile_shape")
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("ReplConfig_missile")

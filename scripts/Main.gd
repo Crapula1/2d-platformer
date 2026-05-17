@@ -27,6 +27,10 @@ const GRENADE_COLORS := [
 var player: Player = null
 var spawn_position: Vector2
 var _level: Node = null
+@onready var players_root: Node2D = $Players
+@onready var spawner: MultiplayerSpawner = $Players/MultiplayerSpawner
+@onready var projectiles_root: Node2D = $Projectiles
+@onready var projectile_spawner: MultiplayerSpawner = $Projectiles/MultiplayerSpawner
 
 func _ready() -> void:
 	if not RunState.is_run_active:
@@ -40,21 +44,15 @@ func _ready() -> void:
 	add_child(_level)
 	move_child(_level, 0)
 
+	spawner.spawn_function = _spawn_player_node
+	projectile_spawner.spawn_function = _spawn_projectile_node
+	players_root.child_entered_tree.connect(_on_player_entered)
+	Net.player_late_joined.connect(_on_player_late_joined)
+	Net.player_list_changed.connect(_reconcile_players)
+
 	await get_tree().process_frame
 
-	player = get_tree().get_first_node_in_group("player") as Player
-	if player == null:
-		return
-
-	if RunState.depth > 0:
-		RunState.apply_to_player(player)
-
-	spawn_position = player.global_position
-
-	player.health_changed.connect(_on_health_changed)
-	player.score_changed.connect(_on_score_changed)
-	player.died.connect(_on_player_died)
-	player.grenade_changed.connect(_on_grenade_changed)
+	spawn_position = _find_spawn_position()
 
 	for goal in get_tree().get_nodes_in_group("goal"):
 		goal.reached.connect(_on_level_exit)
@@ -63,12 +61,142 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart"
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Lobby"
+
+	# Only the server (or solo, when no peer is configured) spawns players.
+	if multiplayer.is_server():
+		# Give clients a moment to load Main.tscn before spawning so their
+		# MultiplayerSpawner is ready to receive the replication messages.
+		if multiplayer.has_multiplayer_peer():
+			await get_tree().create_timer(0.5).timeout
+		_spawn_all_players()
+	else:
+		# Clients (including mid-run joiners) tell the host their Main is up.
+		Net.client_main_ready.rpc_id(1)
+
+func _find_spawn_position() -> Vector2:
+	if _level == null:
+		return Vector2(80, 380)
+	var m := _level.find_child("PlayerSpawn", true, false) as Node2D
+	return m.global_position if m != null else Vector2(80, 380)
+
+func _spawn_all_players() -> void:
+	# Solo / no-lobby fallback: synthesize a single host entry so the existing
+	# single-player flow keeps working when launching Main.tscn directly.
+	if Net.players.is_empty():
+		Net.players[1] = {"name": "Player", "character": "marine", "ready": true}
+
+	var i := 0
+	for peer_id in Net.players.keys():
+		if players_root.has_node("P_%d" % int(peer_id)):
+			i += 1
+			continue
+		var entry: Dictionary = Net.players[peer_id]
+		var offset := Vector2(i * 32, 0)
+		spawner.spawn({
+			"peer": int(peer_id),
+			"character": String(entry.character),
+			"x": spawn_position.x + offset.x,
+			"y": spawn_position.y + offset.y,
+		})
+		i += 1
+
+func _spawn_projectile_node(data: Dictionary) -> Node:
+	var kind: String = String(data.get("kind", "bullet"))
+	var scene_path := "res://scenes/HomingMissile.tscn" if kind == "missile" else "res://scenes/Bullet.tscn"
+	var n := (load(scene_path) as PackedScene).instantiate()
+	n.position = Vector2(float(data.get("x", 0.0)), float(data.get("y", 0.0)))
+	# Host stays the authority on projectiles so AI runs only there.
+	n.set_multiplayer_authority(1)
+	if n.has_method("net_setup"):
+		n.net_setup(data)
+	return n
+
+func spawn_projectile(data: Dictionary) -> void:
+	# Host-only entry point — enemy AI runs on the server, so callers are
+	# already authority-gated by their own _physics_process guards.
+	if not is_inside_tree():
+		return
+	if (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server():
+		projectile_spawner.spawn(data)
+
+func _spawn_player_node(data: Dictionary) -> Node:
+	var scene_path: String = "res://scenes/PlayerDemon.tscn" if String(data.get("character", "marine")) == "demon" else "res://scenes/Player.tscn"
+	var p := (load(scene_path) as PackedScene).instantiate()
+	var peer_id := int(data.get("peer", 1))
+	p.name = "P_%d" % peer_id
+	p.set_multiplayer_authority(peer_id)
+	p.position = Vector2(float(data.get("x", 80.0)), float(data.get("y", 380.0)))
+	return p
+
+func _reconcile_players() -> void:
+	# Free any spawned player nodes whose peer is no longer in the registry.
+	for child in players_root.get_children():
+		if not (child is Player):
+			continue
+		var n: String = child.name
+		if not n.begins_with("P_"):
+			continue
+		var pid: int = int(n.substr(2))
+		if not Net.players.has(pid):
+			child.queue_free()
+
+func _on_player_late_joined(peer_id: int) -> void:
+	# Host-only: a client just finished loading Main mid-run. Spawn them.
+	if not multiplayer.is_server():
+		return
+	# Existing players are already known to the new peer because the spawner
+	# replays its tracked children on connection. We only need to add the new
+	# peer's own player node here.
+	if players_root.has_node("P_%d" % peer_id):
+		return
+	var entry: Dictionary = Net.players.get(peer_id, {"character": "marine"})
+	spawner.spawn({
+		"peer": peer_id,
+		"character": String(entry.get("character", "marine")),
+		"x": spawn_position.x,
+		"y": spawn_position.y,
+	})
+
+func _on_player_entered(node: Node) -> void:
+	if not (node is Player):
+		return
+	var p := node as Player
+	# Wait for the node's _ready so authority is established.
+	await get_tree().process_frame
+	if p.is_multiplayer_authority():
+		player = p
+		if RunState.depth > 0:
+			RunState.apply_to_player(player)
+		player.health_changed.connect(_on_health_changed)
+		player.score_changed.connect(_on_score_changed)
+		player.died.connect(_on_player_died)
+		player.grenade_changed.connect(_on_grenade_changed)
+		_on_health_changed(player.current_health, player.max_health)
+		_on_score_changed(player.score)
+		_on_grenade_changed(Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
+		# Procedural levels: scope the local player's camera to the spawn room.
+		if _level != null and _level.has_method("apply_camera_limits_for_room"):
+			_level.apply_camera_limits_for_room(player, 0)
 
 func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
-		RunState.start_new_run()
-		get_tree().reload_current_scene()
+		# Only host can restart the run in MP; in solo there's no peer and
+		# we just run the reload locally.
+		if multiplayer.is_server():
+			if multiplayer.has_multiplayer_peer():
+				rpc("net_reload_run")
+			else:
+				net_reload_run()
+		return
+
+	# Host can press Esc to send everyone back to the lobby. Solo just quits
+	# to the main menu.
+	if Input.is_action_just_pressed("ui_cancel"):
+		if not multiplayer.has_multiplayer_peer():
+			get_tree().change_scene_to_file(Net.MENU_SCENE_PATH)
+		elif multiplayer.is_server():
+			rpc("net_return_to_lobby")
 		return
 
 	if player == null or player.is_dead:
@@ -76,6 +204,56 @@ func _process(_delta: float) -> void:
 
 	if player.global_position.y > 820:
 		player.take_damage(99, player.global_position)
+
+@rpc("authority", "call_local", "reliable")
+func net_reload_run() -> void:
+	RunState.start_new_run()
+	get_tree().reload_current_scene()
+
+@rpc("authority", "call_local", "reliable")
+func net_apply_upgrade_and_advance(upg_id: String, new_seed: int) -> void:
+	if player != null:
+		RunState.save_from_player(player)
+	RunState.apply_upgrade(upg_id)
+	RunState.advance_depth()
+	Net.current_seed = new_seed
+	_fade_and_load()
+
+@rpc("authority", "call_local", "reliable")
+func net_show_upgrade(upgrade_ids: PackedStringArray) -> void:
+	_show_upgrade_screen_with(upgrade_ids)
+
+const _EXPLOSIVE_EFFECT_SCENE = preload("res://scenes/ExplosiveEffect.tscn")
+const _FIRE_ZONE_SCENE        = preload("res://scenes/FireZone.tscn")
+const _ELECTRIC_ZONE_SCENE    = preload("res://scenes/ElectricZone.tscn")
+
+@rpc("any_peer", "call_local", "reliable")
+func net_spawn_explosion(pos: Vector2) -> void:
+	# Every peer creates its own visual explosion; ExplosiveEffect already
+	# routes damage via request_damage, and is_invincible filters duplicates.
+	var fx := _EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
+	add_child(fx)
+	fx.global_position = pos
+
+@rpc("any_peer", "call_local", "reliable")
+func net_spawn_fire_zone(pos: Vector2) -> void:
+	var fx := _FIRE_ZONE_SCENE.instantiate() as Node2D
+	add_child(fx)
+	fx.global_position = pos
+
+@rpc("any_peer", "call_local", "reliable")
+func net_spawn_electric_zone(pos: Vector2) -> void:
+	var fx := _ELECTRIC_ZONE_SCENE.instantiate() as Node2D
+	add_child(fx)
+	fx.global_position = pos
+
+@rpc("authority", "call_local", "reliable")
+func net_return_to_lobby() -> void:
+	Net.in_game = false
+	for pid in Net.players:
+		Net.players[pid].ready = false
+	Net.player_list_changed.emit()
+	get_tree().change_scene_to_file("res://scenes/Lobby.tscn")
 
 func _on_health_changed(new_health: int, max_health: int) -> void:
 	var hearts := ""
@@ -99,14 +277,29 @@ func _on_player_died() -> void:
 		player.set_physics_process(false)
 
 func _on_level_exit() -> void:
+	# In MP only the host drives level exits; clients see the upgrade screen
+	# replicated via RPC. Without a peer this still works as plain solo.
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		return
 	if player == null or player.is_dead:
 		return
-	RunState.save_from_player(player)
-	RunState.advance_depth()
-	player.set_physics_process(false)
-	_show_upgrade_screen()
 
-func _show_upgrade_screen() -> void:
+	var shuffled: Array = UPGRADES.duplicate()
+	shuffled.shuffle()
+	var choice_ids: PackedStringArray = PackedStringArray()
+	for upg in shuffled.slice(0, 3):
+		choice_ids.append(String(upg["id"]))
+
+	# Freeze the local player; the eventual scene reload re-spawns them.
+	if player != null:
+		player.set_physics_process(false)
+
+	if multiplayer.has_multiplayer_peer():
+		rpc("net_show_upgrade", choice_ids)
+	else:
+		net_show_upgrade(choice_ids)
+
+func _show_upgrade_screen_with(upgrade_ids: PackedStringArray) -> void:
 	var overlay := CanvasLayer.new()
 	overlay.layer = 10
 	add_child(overlay)
@@ -140,9 +333,15 @@ func _show_upgrade_screen() -> void:
 	title_label.offset_bottom = 160.0
 	overlay.add_child(title_label)
 
-	var shuffled: Array = UPGRADES.duplicate()
-	shuffled.shuffle()
-	var choices: Array = shuffled.slice(0, 3)
+	var by_id: Dictionary = {}
+	for u in UPGRADES:
+		by_id[u["id"]] = u
+	var choices: Array = []
+	for id in upgrade_ids:
+		if by_id.has(id):
+			choices.append(by_id[id])
+
+	var is_host_local: bool = (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server()
 
 	var btn_w: float = 155.0
 	var btn_h: float = 120.0
@@ -172,12 +371,31 @@ func _show_upgrade_screen() -> void:
 		btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
 
 		var upg_id: String = upg["id"]
+		btn.disabled = not is_host_local
 		btn.pressed.connect(func():
-			RunState.apply_upgrade(upg_id)
 			overlay.queue_free()
-			_fade_and_load()
+			# Host picks the next procedural seed so every peer's generation
+			# uses the same value after the reload.
+			var new_seed := randi()
+			if multiplayer.has_multiplayer_peer():
+				rpc("net_apply_upgrade_and_advance", upg_id, new_seed)
+			else:
+				net_apply_upgrade_and_advance(upg_id, new_seed)
 		)
 		overlay.add_child(btn)
+
+	if not is_host_local:
+		var note := Label.new()
+		note.text = "Host is choosing..."
+		note.add_theme_font_size_override("font_size", 18)
+		note.add_theme_color_override("font_color", Color(0.8, 0.85, 1.0))
+		note.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		note.add_theme_constant_override("outline_size", 3)
+		note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		note.set_anchors_preset(Control.PRESET_TOP_WIDE)
+		note.offset_top = 360.0
+		note.offset_bottom = 400.0
+		overlay.add_child(note)
 
 func _fade_and_load() -> void:
 	var fade_layer := CanvasLayer.new()

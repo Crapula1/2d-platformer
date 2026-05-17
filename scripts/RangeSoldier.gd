@@ -65,6 +65,8 @@ func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		return
 	if is_dead:
 		velocity.x = move_toward(velocity.x, 0, 300 * delta)
 		if not is_on_floor():
@@ -204,17 +206,14 @@ func _suppressed(delta: float) -> void:
 		fire_timer = 1.0 / (fire_rate * 2.5)
 
 func _shoot(spread: float) -> void:
-	var bullet := BULLET_SCENE.instantiate() as Area2D
-	get_parent().add_child(bullet)
-	bullet.global_position = gun_muzzle.global_position
-
+	var muzzle: Vector2 = gun_muzzle.global_position
 	# Lead the target: aim at where the player will be in the bullet's flight time.
 	var shoot_dir := Vector2(float(direction), 0)
 	if player != null:
-		var to_p: Vector2 = player.global_position - gun_muzzle.global_position
+		var to_p: Vector2 = player.global_position - muzzle
 		var t: float = clampf(to_p.length() / bullet_speed, 0.0, 0.6)
 		var predicted: Vector2 = player.global_position + player.velocity * t
-		var aim: Vector2 = (predicted - gun_muzzle.global_position)
+		var aim: Vector2 = (predicted - muzzle)
 		if aim.length() > 1.0:
 			shoot_dir = aim.normalized()
 			# Don't fire backward — clamp to facing hemisphere.
@@ -225,7 +224,15 @@ func _shoot(spread: float) -> void:
 		var ang: float = shoot_dir.angle() + randf_range(-spread, spread)
 		shoot_dir = Vector2(cos(ang), sin(ang))
 
-	bullet.setup(shoot_dir, bullet_speed, bullet_damage)
+	var vel: Vector2 = shoot_dir * bullet_speed
+	var main := get_tree().current_scene
+	if main != null and main.has_method("spawn_projectile"):
+		main.spawn_projectile({
+			"kind": "bullet",
+			"x": muzzle.x, "y": muzzle.y,
+			"vx": vel.x, "vy": vel.y,
+			"damage": bullet_damage,
+		})
 
 	# Shooting animation: kick the gun back, flash the muzzle, jolt the body.
 	recoil = 4.0
@@ -266,10 +273,24 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	velocity.x = knockback_dir * 160
 	velocity.y = -100
 
-	_flash_hit()
+	net_flash.rpc()
 
 	if current_health <= 0:
+		_net_kill.rpc()
+
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
+@rpc("authority", "call_local", "reliable")
+func _net_kill() -> void:
+	if not is_dead:
 		_die()
+
+@rpc("authority", "call_local", "reliable")
+func net_flash() -> void:
+	_flash_hit()
 
 func _flash_hit() -> void:
 	body_visual.modulate = Color(2.5, 2.5, 2.5)
