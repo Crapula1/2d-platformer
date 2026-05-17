@@ -54,6 +54,12 @@ properties/11/replication_mode = 1
 properties/12/path = NodePath(".:_shotgun_shells")
 properties/12/spawn = true
 properties/12/replication_mode = 1
+properties/13/path = NodePath(".:is_dashing")
+properties/13/spawn = true
+properties/13/replication_mode = 2
+properties/14/path = NodePath(".:is_rolling")
+properties/14/spawn = true
+properties/14/replication_mode = 2
 
 [node name="PlayerDemon" type="CharacterBody2D"]
 collision_layer = 2

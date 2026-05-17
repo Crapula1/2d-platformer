@@ -120,9 +120,7 @@ func _spawn_all_players() -> void:
 		i += 1
 
 func _spawn_player_node(data: Dictionary) -> Node:
-	# Only marine is networked right now; demon scene needs the generic-sprite
-	# refactor before it can be a playable character again.
-	var scene_path := "res://scenes/Player.tscn"
+	var scene_path: String = "res://scenes/PlayerDemon.tscn" if String(data.get("character", "marine")) == "demon" else "res://scenes/Player.tscn"
 	var p := (load(scene_path) as PackedScene).instantiate()
 	var peer_id := int(data.get("peer", 1))
 	p.name = "P_%d" % peer_id
