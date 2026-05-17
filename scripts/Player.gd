@@ -186,7 +186,7 @@ func _ready() -> void:
 			_facing_node = sprite
 	# Hit-detection only fires on the local authority's player so damage
 	# doesn't double-apply across peers.
-	if is_multiplayer_authority():
+	if _is_local_authority():
 		attack_area.body_entered.connect(_on_attack_hit)
 		hurtbox.area_entered.connect(_on_hurtbox_area_entered)
 		hurtbox.body_entered.connect(_on_hurtbox_body_entered)
@@ -199,7 +199,7 @@ func _ready() -> void:
 	shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
 	_cam = get_node_or_null("Camera2D") as Camera2D
 	if _cam != null:
-		if is_multiplayer_authority():
+		if _is_local_authority():
 			_cam.make_current()
 		else:
 			_cam.enabled = false
@@ -218,7 +218,7 @@ func _ready() -> void:
 		_build_axe()
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not _is_local_authority():
 		# Non-local players: state arrives via MultiplayerSynchronizer.
 		# Visuals still need to update from synced flags (animations,
 		# attack pose, etc.) so the other player doesn't look frozen.
@@ -850,10 +850,17 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 		invincibility_timer = duration
 	sprite.modulate = _get_base_modulate()
 
+func _is_local_authority() -> bool:
+	# Solo (no multiplayer peer) → always local. Otherwise defer to the
+	# usual multiplayer-authority check. Godot 4's get_unique_id() can
+	# return 0 (not 1) when no peer is active, which breaks the default
+	# authority=1 comparison and freezes the player in solo.
+	return not multiplayer.has_multiplayer_peer() or is_multiplayer_authority()
+
 @rpc("any_peer", "call_local", "reliable")
 func request_damage(amount: int, source_pos: Vector2) -> void:
 	# Route incoming damage through the player's owning peer.
-	if is_multiplayer_authority():
+	if _is_local_authority():
 		take_damage(amount, source_pos)
 
 func set_camera_limits(left: int, top: int, right: int, bottom: int) -> void:
@@ -865,7 +872,7 @@ func set_camera_limits(left: int, top: int, right: int, bottom: int) -> void:
 	_cam.limit_bottom = bottom
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
-	if not is_multiplayer_authority():
+	if not _is_local_authority():
 		return
 	if is_invincible or is_dead:
 		return

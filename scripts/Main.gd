@@ -185,7 +185,10 @@ func _on_player_entered(node: Node) -> void:
 		return
 	var p := node as Player
 	await get_tree().process_frame
-	if not p.is_multiplayer_authority():
+	# In solo (no multiplayer peer) is_multiplayer_authority() can be false on
+	# every player because get_unique_id() returns 0; treat "no peer" as local.
+	var is_local: bool = (not multiplayer.has_multiplayer_peer()) or p.is_multiplayer_authority()
+	if not is_local:
 		return
 	player = p
 	if RunState.depth > 0:
