@@ -15,6 +15,16 @@ class_name Player
 @export var jump_cut_multiplier: float = 0.4
 @export var coyote_time: float = 0.12
 @export var jump_buffer_time: float = 0.15
+# Apex hang time + fast fall (Celeste / Hollow Knight feel)
+@export var apex_threshold: float = 80.0
+@export var apex_gravity_scale: float = 0.55
+@export var fall_gravity_scale: float = 1.25
+@export var max_fall_speed: float = 600.0
+
+# Jetpack (hold jump after the double-jump to thrust upward for a few seconds)
+@export var jetpack_duration: float = 3.0
+@export var jetpack_thrust: float = -260.0   # target vertical velocity while thrusting
+@export var jetpack_max_up: float = -340.0   # clamp so it doesn't accelerate forever
 
 # Combat
 @export var max_health: int = 5
@@ -62,11 +72,19 @@ var slide_dir: float = 1.0
 var _slide_bash: bool = false
 var active_buffs: Dictionary = {}
 var is_wall_sliding: bool = false
+var _jetpack_armed: bool = false
+var _jetpack_fuel: float = 0.0
+var _is_jetpacking: bool = false
+var _jet_flame: Polygon2D
+var _cam: Camera2D
+var _shake_amount: float = 0.0
+var _shake_decay: float = 12.0
 
 signal health_changed(new_health: int, max: int)
 signal died()
 signal score_changed(new_score: int)
 signal grenade_changed(type_name: String, count: int)
+signal jetpack_changed(fuel: float, max: float)
 
 var score: int = 0
 
@@ -102,6 +120,17 @@ func _ready() -> void:
 	emit_signal("health_changed", current_health, max_health)
 	emit_signal("score_changed", score)
 	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+	emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+	_cam = get_node_or_null("Camera2D") as Camera2D
+	_jet_flame = Polygon2D.new()
+	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
+	_jet_flame.polygon = PackedVector2Array([
+		Vector2(-5.0, 8.0), Vector2(5.0, 8.0),
+		Vector2(3.0, 18.0), Vector2(0.0, 26.0), Vector2(-3.0, 18.0)
+	])
+	_jet_flame.z_index = -1
+	_jet_flame.visible = false
+	add_child(_jet_flame)
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
@@ -120,6 +149,7 @@ func _physics_process(delta: float) -> void:
 	_handle_grenade_input()
 	_handle_shoot_input()
 	_handle_jump_logic()
+	_handle_jetpack(delta)
 
 	move_and_slide()
 	_update_wall_slide()
@@ -128,8 +158,13 @@ func _physics_process(delta: float) -> void:
 		jumps_remaining = max_jumps
 		coyote_timer = coyote_time
 		is_wall_sliding = false
+		_jetpack_armed = false
+		if _jetpack_fuel != jetpack_duration:
+			_jetpack_fuel = jetpack_duration
+			emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
 
 	_update_sprite(delta)
+	_update_camera_shake(delta)
 
 func _update_timers(delta: float) -> void:
 	if not is_on_floor():
@@ -169,12 +204,40 @@ func _update_buffs(delta: float) -> void:
 		active_buffs.erase(key)
 
 func _handle_gravity(delta: float) -> void:
-	if not is_on_floor():
-		if is_wall_sliding:
-			velocity.y = minf(velocity.y + gravity * wall_slide_gravity_scale * delta, wall_slide_max_fall)
-		else:
-			velocity.y += gravity * delta
-			velocity.y = min(velocity.y, 600)
+	if is_on_floor():
+		return
+	if is_wall_sliding:
+		velocity.y = minf(velocity.y + gravity * wall_slide_gravity_scale * delta, wall_slide_max_fall)
+		return
+	if _is_jetpacking:
+		# Jetpack thrust manages vertical velocity itself.
+		return
+	var g_scale := 1.0
+	if absf(velocity.y) < apex_threshold and Input.is_action_pressed("jump"):
+		g_scale = apex_gravity_scale
+	elif velocity.y > 0.0:
+		g_scale = fall_gravity_scale
+	velocity.y += gravity * g_scale * delta
+	velocity.y = minf(velocity.y, max_fall_speed)
+
+func _handle_jetpack(delta: float) -> void:
+	var holding := Input.is_action_pressed("jump")
+	var can_thrust := _jetpack_armed and holding and not is_on_floor() and _jetpack_fuel > 0.0 and not is_dead
+	if can_thrust:
+		# Smoothly drive vertical velocity toward the thrust target.
+		velocity.y = move_toward(velocity.y, jetpack_thrust, 1400.0 * delta)
+		velocity.y = maxf(velocity.y, jetpack_max_up)
+		_jetpack_fuel = maxf(_jetpack_fuel - delta, 0.0)
+		_is_jetpacking = true
+		_jet_flame.visible = true
+		_jet_flame.scale = Vector2(1.0, 0.85 + 0.3 * sin(Time.get_ticks_msec() * 0.04))
+		emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+		_apply_shake(0.6)
+	else:
+		if _is_jetpacking:
+			emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+		_is_jetpacking = false
+		_jet_flame.visible = false
 
 func _handle_jump_input() -> void:
 	if Input.is_action_just_pressed("jump"):
@@ -276,6 +339,7 @@ func _handle_jump_logic() -> void:
 			jumps_remaining -= 1
 			jump_buffer_timer = 0
 			_spawn_double_jump_effect()
+			_jetpack_armed = true
 
 func _handle_grenade_input() -> void:
 	if Input.is_action_just_pressed("cycle_grenade"):
@@ -369,6 +433,7 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	var knockback_dir := (global_position - source_pos).normalized()
 	velocity.x = knockback_dir.x * knockback_force
 	velocity.y = -200
+	_apply_shake(5.0)
 	if current_health <= 0:
 		_die()
 
@@ -376,7 +441,20 @@ func _die() -> void:
 	is_dead = true
 	sprite.stop()
 	sprite.modulate = Color(0.5, 0.5, 0.5)
+	_apply_shake(12.0)
 	emit_signal("died")
+
+func _apply_shake(amount: float) -> void:
+	_shake_amount = maxf(_shake_amount, amount)
+
+func _update_camera_shake(delta: float) -> void:
+	if _cam == null:
+		return
+	if _shake_amount > 0.01:
+		_cam.offset = Vector2(randf_range(-_shake_amount, _shake_amount), randf_range(-_shake_amount, _shake_amount))
+		_shake_amount = maxf(_shake_amount - _shake_decay * delta, 0.0)
+	elif _cam.offset != Vector2.ZERO:
+		_cam.offset = Vector2.ZERO
 
 func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)

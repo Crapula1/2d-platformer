@@ -235,21 +235,37 @@ func _blob_polygon(parent: Node, cx: float, cy: float, rx: float, ry: float, c: 
 	poly.polygon = pts
 	parent.add_child(poly)
 
+const GROUND_SPANS := [
+	Vector2(0.0, 700.0),
+	Vector2(1400.0, 2220.0),
+	Vector2(2370.0, 2510.0),
+	Vector2(2660.0, 3500.0),
+	Vector2(4500.0, 6000.0),
+]
+
+func _is_on_ground(x: float, margin: float = 24.0) -> bool:
+	for s in GROUND_SPANS:
+		if x >= s.x + margin and x <= s.y - margin:
+			return true
+	return false
+
 func _paint_near_trees() -> void:
 	# Foreground palm trees (instances of the PalmTree prop scene) plus the
-	# occasional hanging liana from the ceiling.
+	# occasional hanging liana from the ceiling. Both are skipped above pits so
+	# trees don't float and lianas don't dangle over spike rows.
 	var x: float = 200.0
 	var i: int = 0
 	while x < LEVEL_RIGHT - 80.0:
-		var palm := PALM_TREE_SCENE.instantiate()
-		palm.tree_height = 130.0 + float(i % 3) * 18.0
-		palm.variant     = i % 3
-		palm.rand_seed   = i + 7
-		(palm as Node2D).position = Vector2(x, GROUND_TOP - 2.0)
-		(palm as CanvasItem).z_index = -1
-		add_child(palm)
-		if i % 2 == 0:
-			_draw_liana(x + 160.0)
+		if _is_on_ground(x):
+			var palm := PALM_TREE_SCENE.instantiate()
+			palm.tree_height = 130.0 + float(i % 3) * 18.0
+			palm.variant     = i % 3
+			palm.rand_seed   = i + 7
+			(palm as Node2D).position = Vector2(x, GROUND_TOP - 2.0)
+			(palm as CanvasItem).z_index = -1
+			add_child(palm)
+			if i % 2 == 0 and _is_on_ground(x + 160.0):
+				_draw_liana(x + 160.0)
 		x += 380.0
 		i += 1
 
@@ -1104,3 +1120,13 @@ func _setup_player_camera() -> void:
 	cam.limit_top    = int(LEVEL_TOP - 100.0)
 	cam.limit_right  = int(LEVEL_RIGHT)
 	cam.limit_bottom = int(FLOOR_BOTTOM)
+	# Metroid / Hollow Knight feel: room for the camera to lead in the direction
+	# of motion, with a small vertical drag for jumps.
+	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 6.0
+	cam.drag_horizontal_enabled = true
+	cam.drag_left_margin = 0.20
+	cam.drag_right_margin = 0.20
+	cam.drag_vertical_enabled = true
+	cam.drag_top_margin = 0.18
+	cam.drag_bottom_margin = 0.30
