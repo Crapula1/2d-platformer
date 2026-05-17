@@ -4,7 +4,9 @@ extends Node
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
-const CHARACTERS: Array[String] = ["marine", "demon"]
+# Demon avatar is on hold pending Player.gd generic-sprite refactor after the
+# merge with origin/main (which rewrote Player around an AnimatedSprite2D).
+const CHARACTERS: Array[String] = ["marine"]
 const GAME_SCENE_PATH: String = "res://scenes/Main.tscn"
 const MENU_SCENE_PATH: String = "res://scenes/MainMenu.tscn"
 
