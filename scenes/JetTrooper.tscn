@@ -1,0 +1,160 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/JetTrooper.gd" id="1_jet"]
+
+[sub_resource type="RectangleShape2D" id="body_shape"]
+size = Vector2(20, 30)
+
+[sub_resource type="RectangleShape2D" id="hurt_shape"]
+size = Vector2(22, 30)
+
+[node name="JetTrooper" type="CharacterBody2D"]
+collision_layer = 12
+collision_mask = 1
+script = ExtResource("1_jet")
+
+[node name="Body" type="Node2D" parent="."]
+
+[node name="Backpack" type="ColorRect" parent="Body"]
+offset_left = -12.0
+offset_top = -8.0
+offset_right = -6.0
+offset_bottom = 8.0
+color = Color(0.18, 0.22, 0.30, 1)
+
+[node name="BackpackRim" type="ColorRect" parent="Body"]
+offset_left = -12.0
+offset_top = -8.0
+offset_right = -6.0
+offset_bottom = -6.0
+color = Color(0.35, 0.55, 0.85, 1)
+
+[node name="ThrusterL" type="ColorRect" parent="Body"]
+offset_left = -11.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 12.0
+color = Color(0.45, 0.45, 0.50, 1)
+
+[node name="ThrusterR" type="ColorRect" parent="Body"]
+offset_left = -8.0
+offset_top = 8.0
+offset_right = -5.0
+offset_bottom = 12.0
+color = Color(0.45, 0.45, 0.50, 1)
+
+[node name="ThrustFlame" type="Polygon2D" parent="Body"]
+color = Color(1.0, 0.55, 0.12, 0.95)
+polygon = PackedVector2Array(-11, 12, -5, 12, -6, 22, -8, 28, -10, 22)
+
+[node name="Legs" type="ColorRect" parent="Body"]
+offset_left = -5.0
+offset_top = 10.0
+offset_right = 7.0
+offset_bottom = 14.0
+color = Color(0.10, 0.13, 0.18, 1)
+
+[node name="Belt" type="ColorRect" parent="Body"]
+offset_left = -6.0
+offset_top = 7.0
+offset_right = 8.0
+offset_bottom = 10.0
+color = Color(0.22, 0.17, 0.08, 1)
+
+[node name="Torso" type="ColorRect" parent="Body"]
+offset_left = -6.0
+offset_top = -2.0
+offset_right = 8.0
+offset_bottom = 7.0
+color = Color(0.22, 0.30, 0.42, 1)
+
+[node name="ChestStripe" type="ColorRect" parent="Body"]
+offset_left = -1.0
+offset_top = -2.0
+offset_right = 3.0
+offset_bottom = 7.0
+color = Color(0.95, 0.65, 0.15, 1)
+
+[node name="Faceplate" type="ColorRect" parent="Body"]
+offset_left = -4.0
+offset_top = -10.0
+offset_right = 6.0
+offset_bottom = -2.0
+color = Color(0.42, 0.42, 0.46, 1)
+
+[node name="Visor" type="ColorRect" parent="Body"]
+offset_left = -3.0
+offset_top = -9.0
+offset_right = 5.0
+offset_bottom = -5.0
+color = Color(0.10, 0.35, 0.55, 1)
+
+[node name="Helmet" type="ColorRect" parent="Body"]
+offset_left = -5.0
+offset_top = -14.0
+offset_right = 7.0
+offset_bottom = -10.0
+color = Color(0.16, 0.22, 0.32, 1)
+
+[node name="Antenna" type="ColorRect" parent="Body"]
+offset_left = 5.0
+offset_top = -19.0
+offset_right = 6.0
+offset_bottom = -14.0
+color = Color(0.30, 0.30, 0.32, 1)
+
+[node name="AntennaTip" type="ColorRect" parent="Body"]
+offset_left = 4.0
+offset_top = -20.0
+offset_right = 7.0
+offset_bottom = -18.0
+color = Color(1.0, 0.30, 0.10, 1)
+
+[node name="Gun" type="ColorRect" parent="Body"]
+offset_left = 6.0
+offset_top = -3.0
+offset_right = 22.0
+offset_bottom = 1.0
+color = Color(0.16, 0.16, 0.18, 1)
+
+[node name="GunBarrel" type="ColorRect" parent="Body"]
+offset_left = 18.0
+offset_top = -2.0
+offset_right = 26.0
+offset_bottom = 0.0
+color = Color(0.10, 0.10, 0.12, 1)
+
+[node name="GunMuzzle" type="Marker2D" parent="Body"]
+position = Vector2(26, -1)
+
+[node name="AlertIndicator" type="Node2D" parent="."]
+position = Vector2(0, -26)
+visible = false
+
+[node name="Dot" type="ColorRect" parent="AlertIndicator"]
+offset_left = -2.0
+offset_top = 3.0
+offset_right = 2.0
+offset_bottom = 6.0
+color = Color(1.0, 0.85, 0.0, 1)
+
+[node name="Bar" type="ColorRect" parent="AlertIndicator"]
+offset_left = -2.0
+offset_top = -6.0
+offset_right = 2.0
+offset_bottom = 1.0
+color = Color(1.0, 0.85, 0.0, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("body_shape")
+
+[node name="SightRay" type="RayCast2D" parent="."]
+target_position = Vector2(360, 0)
+collision_mask = 3
+
+[node name="Hurtbox" type="Area2D" parent="."]
+collision_layer = 4
+collision_mask = 32
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("hurt_shape")

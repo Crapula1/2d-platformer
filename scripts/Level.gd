@@ -11,6 +11,7 @@ extends Node2D
 const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
 const BREAK_PLATFORM_SCRIPT  := preload("res://scripts/BreakPlatform.gd")
 const RANGE_SOLDIER_SCENE    := preload("res://scenes/RangeSoldier.tscn")
+const JET_TROOPER_SCENE      := preload("res://scenes/JetTrooper.tscn")
 const COIN_SCENE             := preload("res://scenes/Coin.tscn")
 const SPIKE_SCENE            := preload("res://scenes/Spike.tscn")
 const POWERUP_SCENE          := preload("res://scenes/PowerUp.tscn")
@@ -443,6 +444,13 @@ func _add_soldier(x: float, y: float, patrol: float = 80.0, speed: float = -1.0)
 func _add_turret(x: float, y: float) -> void:
 	# A range soldier rooted in place — sees and shoots, doesn't wander.
 	_add_soldier(x, y, 1.0, 0.0)
+
+func _add_jet_trooper(x: float, y: float, hp: int = 9) -> void:
+	# Mini-boss: hovers, chases in 2D, fires lead shots.
+	var jt := JET_TROOPER_SCENE.instantiate() as JetTrooper
+	jt.position = Vector2(x, y)
+	jt.max_health = hp
+	$Enemies.add_child(jt)
 
 func _add_coin(x: float, y: float) -> void:
 	var c := COIN_SCENE.instantiate()
@@ -1013,6 +1021,9 @@ func _build_section_f_big_pit_gauntlet() -> void:
 	# Hanging cable + pipe over the pit
 	_add_branch_h(3520.0, 60.0, 960.0)
 
+	# Mini-boss: a jet trooper patrols the airspace above the long pit.
+	_add_jet_trooper(4000.0, 180.0, 10)
+
 # -----------------------------------------------------------------------------
 # Section G — Mixed challenge (4500..5200): mixed platforms, enemies,
 # Lever + Door gating the end, pulsing electric between high platforms.
@@ -1101,6 +1112,9 @@ func _build_section_h_final_stretch() -> void:
 
 	# Final grenade resupply right before the exit
 	_add_grenade_pickup(5780.0, 366.0, 0)
+
+	# Final mini-boss guarding the exit — heavier jet trooper.
+	_add_jet_trooper(5800.0, 200.0, 14)
 
 	# Exit door
 	_add_exit(5900.0, 370.0)

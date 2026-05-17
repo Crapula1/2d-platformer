@@ -155,9 +155,13 @@ func _alert(_delta: float) -> void:
 		direction = sign(player.global_position.x - global_position.x)
 
 func _combat() -> void:
-	velocity.x = move_toward(velocity.x, 0, 500)
 	if player:
 		direction = sign(player.global_position.x - global_position.x)
+		# Light strafe — sidestep to keep the player guessing.
+		var strafe := sin(Time.get_ticks_msec() * 0.004) * patrol_speed * 0.55
+		velocity.x = move_toward(velocity.x, strafe, 400)
+	else:
+		velocity.x = move_toward(velocity.x, 0, 500)
 	if fire_timer <= 0:
 		_shoot(0.0)
 		fire_timer = 1.0 / fire_rate
@@ -177,10 +181,22 @@ func _shoot(spread: float) -> void:
 	get_parent().add_child(bullet)
 	bullet.global_position = gun_muzzle.global_position
 
+	# Lead the target: aim at where the player will be in the bullet's flight time.
 	var shoot_dir := Vector2(float(direction), 0)
+	if player != null:
+		var to_p: Vector2 = player.global_position - gun_muzzle.global_position
+		var t: float = clampf(to_p.length() / bullet_speed, 0.0, 0.6)
+		var predicted: Vector2 = player.global_position + player.velocity * t
+		var aim: Vector2 = (predicted - gun_muzzle.global_position)
+		if aim.length() > 1.0:
+			shoot_dir = aim.normalized()
+			# Don't fire backward — clamp to facing hemisphere.
+			if sign(shoot_dir.x) != direction and direction != 0:
+				shoot_dir.x = float(direction) * 0.35
+				shoot_dir = shoot_dir.normalized()
 	if spread > 0:
-		shoot_dir.y = randf_range(-spread, spread)
-		shoot_dir = shoot_dir.normalized()
+		var ang: float = shoot_dir.angle() + randf_range(-spread, spread)
+		shoot_dir = Vector2(cos(ang), sin(ang))
 
 	bullet.setup(shoot_dir, bullet_speed, bullet_damage)
 
