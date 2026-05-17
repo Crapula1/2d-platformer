@@ -26,11 +26,20 @@ enum State { IDLE, ALERT, CHASE, ATTACK, STAGGER, DEAD }
 @export var burst_interval: float = 0.12
 @export var burst_cooldown: float = 0.9
 @export var spread: float = 0.06
+@export var missile_every: int = 2   # fire a missile once every N bullet bursts
+@export var missile_cooldown: float = 2.0
 
 @export var alert_time: float = 0.45
 @export var stagger_time: float = 0.35
 
+# Patrol — even when not engaging, fly a slow horizontal sweep around
+# start_position so the trooper is always roaming the airspace.
+@export var patrol_width: float = 280.0
+@export var patrol_height: float = 60.0
+@export var patrol_speed: float = 0.45  # cycles per second along the sweep
+
 const BULLET_SCENE = preload("res://scenes/Bullet.tscn")
+const MISSILE_SCENE = preload("res://scenes/HomingMissile.tscn")
 const EXPLOSIVE_EFFECT_SCENE = preload("res://scenes/ExplosiveEffect.tscn")
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
@@ -46,6 +55,9 @@ var stagger_timer: float = 0.0
 var burst_left: int = 0
 var burst_timer: float = 0.0
 var bob_phase: float = 0.0
+var patrol_phase: float = 0.0
+var bursts_fired: int = 0
+var missile_timer: float = 0.0
 
 @onready var body_visual: Node2D = $Body
 @onready var visor: ColorRect = $Body/Visor
@@ -84,10 +96,12 @@ func _physics_process(delta: float) -> void:
 
 func _update_timers(delta: float) -> void:
 	bob_phase += delta * 3.2
+	patrol_phase += delta * patrol_speed * TAU
 	if fire_timer > 0: fire_timer -= delta
 	if alert_timer > 0: alert_timer -= delta
 	if stagger_timer > 0: stagger_timer -= delta
 	if burst_timer > 0: burst_timer -= delta
+	if missile_timer > 0: missile_timer -= delta
 
 func _update_state() -> void:
 	if stagger_timer > 0:
@@ -142,7 +156,7 @@ func _set_state(new_state: State) -> void:
 func _run_state(delta: float) -> void:
 	match state:
 		State.IDLE:
-			_hover_to(start_position, delta, 0.45)
+			_patrol(delta)
 		State.ALERT:
 			# Brace + face the player while the alert plays out.
 			if player:
@@ -157,6 +171,17 @@ func _run_state(delta: float) -> void:
 			# Cut thrust briefly — the trooper sags.
 			velocity.y = move_toward(velocity.y, 80.0, thrust_force * 0.5 * delta)
 			velocity.x = move_toward(velocity.x, 0, thrust_force * delta)
+
+func _patrol(delta: float) -> void:
+	# Figure-8 over the patrol box centered on start_position. Always moving.
+	var target: Vector2 = start_position + Vector2(
+		sin(patrol_phase) * patrol_width * 0.5,
+		sin(patrol_phase * 2.0) * patrol_height * 0.5
+	)
+	_thrust_toward(target, delta, 0.6)
+	# Face the direction we're moving so animations read.
+	if absf(velocity.x) > 8.0:
+		direction = int(sign(velocity.x))
 
 func _chase(delta: float) -> void:
 	if player == null: return
@@ -193,15 +218,35 @@ func _thrust_toward(target: Vector2, delta: float, strength: float = 1.0) -> voi
 	# (No additional gravity applied — we ignore it while alive.)
 
 func _try_fire() -> void:
+	# Prefer a missile when ready — it's the showy attack.
+	if missile_timer <= 0 and burst_left == 0 and fire_timer <= 0 and bursts_fired > 0 and bursts_fired % missile_every == 0:
+		_fire_missile()
+		missile_timer = missile_cooldown
+		fire_timer = burst_cooldown * 0.6
+		return
 	if burst_left > 0 and burst_timer <= 0:
 		_shoot()
 		burst_left -= 1
 		burst_timer = burst_interval
 		if burst_left == 0:
 			fire_timer = burst_cooldown
+			bursts_fired += 1
 	elif burst_left == 0 and fire_timer <= 0:
 		burst_left = burst_count
 		burst_timer = 0.0
+
+func _fire_missile() -> void:
+	if player == null: return
+	var m := MISSILE_SCENE.instantiate() as HomingMissile
+	get_parent().add_child(m)
+	m.global_position = gun_muzzle.global_position
+	# Launch up-and-out so the missile arcs in.
+	var to_p: Vector2 = (player.global_position - gun_muzzle.global_position).normalized()
+	var launch: Vector2 = (to_p + Vector2(0.0, -0.6)).normalized() * 140.0
+	m.setup(launch, player, bullet_damage)
+	# Slight recoil + visor flash for "telegraph"
+	velocity += -to_p * 60.0
+	visor.color = Color(1.0, 0.9, 0.4)
 
 func _shoot() -> void:
 	if player == null: return
@@ -277,14 +322,27 @@ func _die() -> void:
 	)
 
 func _update_visuals(delta: float) -> void:
-	body_visual.scale.x = float(direction)
+	# Smoothly flip facing instead of snapping.
+	var target_facing := float(direction)
+	body_visual.scale.x = lerpf(body_visual.scale.x, target_facing, minf(delta * 12.0, 1.0))
 
 	if is_dead:
 		return
 
-	# Pulse the thrust flame for life.
-	var t := 0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.045)
-	thrust_flame.scale = Vector2(1.0, t)
+	# Banking: tilt body toward the direction of motion (Metroid-style).
+	# When facing right, positive vx → nose forward (tilt slightly down). When
+	# facing left, sign flips with body_visual.scale.x so the rotation reads.
+	var bank: float = clampf(velocity.x * 0.0009, -0.28, 0.28)
+	if direction < 0:
+		bank = -bank
+	# Add a touch of pitch from vertical velocity (climbing → nose up).
+	var pitch: float = clampf(-velocity.y * 0.0006, -0.18, 0.18)
+	body_visual.rotation = lerpf(body_visual.rotation, bank + pitch, minf(delta * 10.0, 1.0))
+
+	# Thrust flame: longer when climbing hard, flickers when level/falling.
+	var thrust_intensity: float = 0.7 + clampf(-velocity.y / 200.0, 0.0, 1.0) * 0.9
+	var flicker: float = 0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.045)
+	thrust_flame.scale = Vector2(1.0, thrust_intensity * flicker)
 	thrust_flame.visible = state != State.STAGGER
 
 	match state:

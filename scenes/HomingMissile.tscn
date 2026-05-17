@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/HomingMissile.gd" id="1_missile"]
+
+[sub_resource type="RectangleShape2D" id="missile_shape"]
+size = Vector2(10, 5)
+
+[node name="HomingMissile" type="Area2D"]
+collision_layer = 16
+collision_mask = 1
+script = ExtResource("1_missile")
+
+[node name="Body" type="Polygon2D" parent="."]
+color = Color(0.85, 0.85, 0.90, 1)
+polygon = PackedVector2Array(-6, -2, 4, -2, 7, 0, 4, 2, -6, 2)
+
+[node name="Nose" type="Polygon2D" parent="."]
+color = Color(0.95, 0.30, 0.10, 1)
+polygon = PackedVector2Array(4, -2, 8, 0, 4, 2)
+
+[node name="Fin" type="Polygon2D" parent="."]
+color = Color(0.50, 0.50, 0.55, 1)
+polygon = PackedVector2Array(-6, -2, -3, -4, -3, -2, -6, 2, -3, 4, -3, 2)
+
+[node name="Flame" type="Polygon2D" parent="."]
+position = Vector2(-7, 0)
+color = Color(1.0, 0.55, 0.10, 0.95)
+polygon = PackedVector2Array(0, -2, 0, 2, -4, 1, -8, 0, -4, -1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("missile_shape")

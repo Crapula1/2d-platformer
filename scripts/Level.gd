@@ -445,11 +445,13 @@ func _add_turret(x: float, y: float) -> void:
 	# A range soldier rooted in place — sees and shoots, doesn't wander.
 	_add_soldier(x, y, 1.0, 0.0)
 
-func _add_jet_trooper(x: float, y: float, hp: int = 9) -> void:
-	# Mini-boss: hovers, chases in 2D, fires lead shots.
+func _add_jet_trooper(x: float, y: float, hp: int = 9, patrol_w: float = 280.0, patrol_h: float = 60.0) -> void:
+	# Mini-boss: hovers, chases in 2D, fires lead shots + tracking missiles.
 	var jt := JET_TROOPER_SCENE.instantiate() as JetTrooper
 	jt.position = Vector2(x, y)
 	jt.max_health = hp
+	jt.patrol_width = patrol_w
+	jt.patrol_height = patrol_h
 	$Enemies.add_child(jt)
 
 func _add_coin(x: float, y: float) -> void:
@@ -1021,8 +1023,9 @@ func _build_section_f_big_pit_gauntlet() -> void:
 	# Hanging cable + pipe over the pit
 	_add_branch_h(3520.0, 60.0, 960.0)
 
-	# Mini-boss: a jet trooper patrols the airspace above the long pit.
-	_add_jet_trooper(4000.0, 180.0, 10)
+	# Mini-boss: a jet trooper patrols the entire airspace above the long pit
+	# (x = 3520..4480, ~960 wide). Roams continuously even when not engaging.
+	_add_jet_trooper(4000.0, 180.0, 10, 820.0, 110.0)
 
 # -----------------------------------------------------------------------------
 # Section G — Mixed challenge (4500..5200): mixed platforms, enemies,
