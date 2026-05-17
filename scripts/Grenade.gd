@@ -59,14 +59,17 @@ func _detonate() -> void:
 	_detonated = true
 	set_physics_process(false)
 
-	var effect_scene: PackedScene = EXPLOSION_SCENE
+	var rpc_name: String = "net_spawn_explosion"
 	match grenade_type:
-		Type.INCENDIARY: effect_scene = FIRE_ZONE_SCENE
-		Type.ELECTRIC:   effect_scene = ELECTRIC_SCENE
+		Type.INCENDIARY: rpc_name = "net_spawn_fire_zone"
+		Type.ELECTRIC:   rpc_name = "net_spawn_electric_zone"
 
-	var effect: Node2D = effect_scene.instantiate() as Node2D
-	get_parent().add_child(effect)
-	effect.global_position = global_position
+	var main := get_tree().current_scene
+	if main != null and main.has_method(rpc_name):
+		if multiplayer.has_multiplayer_peer():
+			main.rpc(rpc_name, global_position)
+		else:
+			main.call(rpc_name, global_position)
 	queue_free()
 
 func _apply_colors() -> void:

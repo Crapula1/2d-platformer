@@ -14,10 +14,13 @@ func _ready() -> void:
 	_fade_out()
 
 func _hit(body: Node2D) -> void:
-	if not body.has_method("take_damage"):
-		return
 	var dmg: int = PLAYER_DAMAGE if body is Player else ENEMY_DAMAGE
-	body.take_damage(dmg, global_position)
+	if body.has_method("request_damage"):
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+	elif body.has_method("take_damage"):
+		body.take_damage(dmg, global_position)
+	else:
+		return
 	if body is CharacterBody2D:
 		var cb: CharacterBody2D = body as CharacterBody2D
 		var offset: Vector2 = cb.global_position - global_position

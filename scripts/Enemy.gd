@@ -25,6 +25,8 @@ func _ready() -> void:
 	add_to_group("enemy")
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		return
 	if is_dead:
 		velocity.x = move_toward(velocity.x, 0, 400 * delta)
 		if not is_on_floor():
@@ -74,14 +76,28 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	velocity.x = knockback_dir * 200
 	velocity.y = -150
 
+	net_flash.rpc()
+
+	if current_health <= 0:
+		_net_kill.rpc()
+
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
+@rpc("authority", "call_local", "reliable")
+func _net_kill() -> void:
+	if not is_dead:
+		_die()
+
+@rpc("authority", "call_local", "reliable")
+func net_flash() -> void:
 	sprite.color = Color.WHITE
-	get_tree().create_timer(0.1).timeout.connect(func() -> void:
+	get_tree().create_timer(0.1).timeout.connect(func():
 		if is_instance_valid(self) and not is_dead:
 			sprite.color = _base_color
 	)
-
-	if current_health <= 0:
-		_die()
 
 func _die() -> void:
 	is_dead = true

@@ -151,9 +151,12 @@ func _ready() -> void:
 	attack_shape.disabled = true
 	crouch_shape.disabled = true
 	add_to_group("player")
-	attack_area.body_entered.connect(_on_attack_hit)
-	hurtbox.area_entered.connect(_on_hurtbox_area_entered)
-	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
+	# Hit-detection only fires on the local authority's player so damage
+	# doesn't double-apply across peers.
+	if is_multiplayer_authority():
+		attack_area.body_entered.connect(_on_attack_hit)
+		hurtbox.area_entered.connect(_on_hurtbox_area_entered)
+		hurtbox.body_entered.connect(_on_hurtbox_body_entered)
 	health_changed.emit(current_health, max_health)
 	score_changed.emit(score)
 	grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
@@ -162,6 +165,11 @@ func _ready() -> void:
 	weapon_changed.emit(WEAPON_NAMES[weapon])
 	shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
 	_cam = get_node_or_null("Camera2D") as Camera2D
+	if _cam != null:
+		if is_multiplayer_authority():
+			_cam.make_current()
+		else:
+			_cam.enabled = false
 	_jet_flame = Polygon2D.new()
 	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
 	_jet_flame.polygon = PackedVector2Array([
@@ -174,6 +182,12 @@ func _ready() -> void:
 	_build_axe()
 
 func _physics_process(delta: float) -> void:
+	if not is_multiplayer_authority():
+		# Non-local players: state arrives via MultiplayerSynchronizer.
+		# Visuals still need to update from synced flags (animations,
+		# attack pose, etc.) so the other player doesn't look frozen.
+		_update_sprite(delta)
+		return
 	if is_dead:
 		velocity.x = move_toward(velocity.x, 0, friction * delta)
 		if not is_on_floor():
@@ -398,7 +412,7 @@ func _handle_grenade_input() -> void:
 
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
-	get_parent().add_child(g)
+	get_tree().current_scene.add_child(g)
 	var spawn_pos: Vector2 = global_position + Vector2(0, -10)
 	g.global_position = spawn_pos
 
@@ -496,12 +510,14 @@ func _end_attack() -> void:
 	_hand_back.visible = false
 
 func _on_attack_hit(body: Node) -> void:
-	if body.has_method("take_damage"):
-		var cfg: Dictionary = _stage_config(attack_stage)
-		var mult: float = float(cfg.get("damage_mult", 1.0))
-		var dmg: int = int(attack_damage * mult * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
-		if _slide_bash:
-			dmg = int(dmg * 1.6)
+	var cfg: Dictionary = _stage_config(attack_stage)
+	var mult: float = float(cfg.get("damage_mult", 1.0))
+	var dmg: int = int(attack_damage * mult * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+	if _slide_bash:
+		dmg = int(dmg * 1.6)
+	if body.has_method("request_damage"):
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+	elif body.has_method("take_damage"):
 		body.take_damage(dmg, global_position)
 
 func _stage_config(stage: int) -> Dictionary:
@@ -727,7 +743,23 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 		invincibility_timer = duration
 	sprite.modulate = _get_base_modulate()
 
+@rpc("any_peer", "call_local", "reliable")
+func request_damage(amount: int, source_pos: Vector2) -> void:
+	# Route incoming damage through the player's owning peer.
+	if is_multiplayer_authority():
+		take_damage(amount, source_pos)
+
+func set_camera_limits(left: int, top: int, right: int, bottom: int) -> void:
+	if _cam == null:
+		return
+	_cam.limit_left = left
+	_cam.limit_top = top
+	_cam.limit_right = right
+	_cam.limit_bottom = bottom
+
 func take_damage(amount: int, source_pos: Vector2) -> void:
+	if not is_multiplayer_authority():
+		return
 	if is_invincible or is_dead:
 		return
 	# All incoming attacks deal 1 damage. The kill-plane in Main.gd still
@@ -944,7 +976,7 @@ func _shoot() -> void:
 
 func _fire_rifle(muzzle: Vector2, dir: Vector2) -> void:
 	var bullet := PLAYER_BULLET_SCENE.instantiate()
-	get_parent().add_child(bullet)
+	get_tree().current_scene.add_child(bullet)
 	bullet.global_position = muzzle
 	bullet.max_range = bullet_range
 	bullet.setup(dir, bullet_speed, bullet_damage)
@@ -965,7 +997,7 @@ func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
 	for off in offsets:
 		var spawn_offset: Vector2 = dir * off.x + perp * off.y
 		var pellet := PLAYER_BULLET_SCENE.instantiate()
-		get_parent().add_child(pellet)
+		get_tree().current_scene.add_child(pellet)
 		pellet.global_position = muzzle + spawn_offset
 		pellet.max_range = shotgun_pellet_range
 		pellet.setup(dir, shotgun_pellet_speed, pellet_dmg)

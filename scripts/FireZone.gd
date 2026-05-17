@@ -63,11 +63,15 @@ func _physics_process(delta: float) -> void:
 	if _tick_timer <= 0.0:
 		_tick_timer = TICK_INTERVAL
 		for body in _bodies:
-			if is_instance_valid(body) and body.has_method("take_damage"):
+			if not is_instance_valid(body):
+				continue
+			if body.has_method("request_damage"):
+				body.request_damage.rpc_id(body.get_multiplayer_authority(), DAMAGE_PER_TICK, global_position)
+			elif body.has_method("take_damage"):
 				body.take_damage(DAMAGE_PER_TICK, global_position)
 
 func _on_body_entered(body: Node) -> void:
-	if body.has_method("take_damage"):
+	if body.has_method("request_damage") or body.has_method("take_damage"):
 		_bodies.append(body)
 
 func _on_body_exited(body: Node) -> void:
