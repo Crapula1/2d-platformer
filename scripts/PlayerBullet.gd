@@ -15,7 +15,7 @@ func _ready() -> void:
 	collision_mask = 5  # layer 1 (World) + layer 3 (Enemy)
 	body_entered.connect(_on_body_entered)
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	position += vel * delta
 	lifetime -= delta
 	if lifetime <= 0:

@@ -117,10 +117,10 @@ func _ready() -> void:
 	attack_area.body_entered.connect(_on_attack_hit)
 	hurtbox.area_entered.connect(_on_hurtbox_area_entered)
 	hurtbox.body_entered.connect(_on_hurtbox_body_entered)
-	emit_signal("health_changed", current_health, max_health)
-	emit_signal("score_changed", score)
-	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
-	emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+	health_changed.emit(current_health, max_health)
+	score_changed.emit(score)
+	grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
+	jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 	_cam = get_node_or_null("Camera2D") as Camera2D
 	_jet_flame = Polygon2D.new()
 	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
@@ -161,7 +161,7 @@ func _physics_process(delta: float) -> void:
 		_jetpack_armed = false
 		if _jetpack_fuel != jetpack_duration:
 			_jetpack_fuel = jetpack_duration
-			emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+			jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 
 	_update_sprite(delta)
 	_update_camera_shake(delta)
@@ -231,11 +231,11 @@ func _handle_jetpack(delta: float) -> void:
 		_is_jetpacking = true
 		_jet_flame.visible = true
 		_jet_flame.scale = Vector2(1.0, 0.85 + 0.3 * sin(Time.get_ticks_msec() * 0.04))
-		emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+		jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 		_apply_shake(0.6)
 	else:
 		if _is_jetpacking:
-			emit_signal("jetpack_changed", _jetpack_fuel, jetpack_duration)
+			jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 		_is_jetpacking = false
 		_jet_flame.visible = false
 
@@ -344,12 +344,12 @@ func _handle_jump_logic() -> void:
 func _handle_grenade_input() -> void:
 	if Input.is_action_just_pressed("cycle_grenade"):
 		grenade_type = (grenade_type + 1) % 3
-		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+		grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
 	if Input.is_action_just_pressed("throw_grenade") and _grenade_cooldown <= 0 and not is_dead and grenade_count > 0:
 		_throw_grenade()
 		grenade_count -= 1
 		_grenade_cooldown = grenade_cooldown_base
-		emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+		grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
 
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
@@ -363,7 +363,7 @@ func add_grenade(type: int) -> bool:
 		return false
 	grenade_count += 1
 	grenade_type = type
-	emit_signal("grenade_changed", GRENADE_NAMES[grenade_type], grenade_count)
+	grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
 	return true
 
 func _handle_attack_input() -> void:
@@ -412,7 +412,7 @@ func _collect(item: Area2D) -> void:
 	elif item.has_method("collect"):
 		var value = item.collect()
 		score += value
-		emit_signal("score_changed", score)
+		score_changed.emit(score)
 
 func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> void:
 	active_buffs[type] = {"timer": duration, "magnitude": magnitude}
@@ -429,7 +429,7 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	invincibility_timer = invincibility_time
 	if is_sliding:
 		_end_slide()
-	emit_signal("health_changed", current_health, max_health)
+	health_changed.emit(current_health, max_health)
 	var knockback_dir := (global_position - source_pos).normalized()
 	velocity.x = knockback_dir.x * knockback_force
 	velocity.y = -200
@@ -442,7 +442,7 @@ func _die() -> void:
 	sprite.stop()
 	sprite.modulate = Color(0.5, 0.5, 0.5)
 	_apply_shake(12.0)
-	emit_signal("died")
+	died.emit()
 
 func _apply_shake(amount: float) -> void:
 	_shake_amount = maxf(_shake_amount, amount)
@@ -458,7 +458,7 @@ func _update_camera_shake(delta: float) -> void:
 
 func heal(amount: int) -> void:
 	current_health = min(current_health + amount, max_health)
-	emit_signal("health_changed", current_health, max_health)
+	health_changed.emit(current_health, max_health)
 
 func _get_base_modulate() -> Color:
 	if "damage" in active_buffs: return Color(1.0, 0.55, 0.1)

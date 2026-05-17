@@ -8,6 +8,8 @@ extends Node2D
 
 const LEVEL_SCENE := preload("res://scenes/Level.tscn")
 const PROC_LEVEL_SCENE := preload("res://scenes/ProceduralLevel.tscn")
+const PAUSE_MENU_SCENE := preload("res://scenes/PauseMenu.tscn")
+const DEATH_PLANE_MARGIN: float = 160.0
 
 const UPGRADES := [
 	{"id": "max_hp",      "name": "Combat Stims",  "desc": "+2 Max HP"},
@@ -27,6 +29,7 @@ const GRENADE_COLORS := [
 var player: Player = null
 var spawn_position: Vector2
 var _level: Node = null
+var _pause_menu: CanvasLayer = null
 
 func _ready() -> void:
 	if not RunState.is_run_active:
@@ -63,9 +66,13 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart"
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
 
 func _process(_delta: float) -> void:
+	if Input.is_action_just_pressed("pause") and not is_instance_valid(_pause_menu):
+		_open_pause_menu()
+		return
+
 	if Input.is_action_just_pressed("restart"):
 		RunState.start_new_run()
 		get_tree().reload_current_scene()
@@ -74,7 +81,8 @@ func _process(_delta: float) -> void:
 	if player == null or player.is_dead:
 		return
 
-	if player.global_position.y > 820:
+	var death_y: float = get_viewport_rect().size.y + DEATH_PLANE_MARGIN
+	if player.global_position.y > death_y:
 		player.take_damage(99, player.global_position)
 
 func _on_health_changed(new_health: int, max_health: int) -> void:
@@ -148,7 +156,7 @@ func _show_upgrade_screen() -> void:
 	var btn_h: float = 120.0
 	var spacing: float = 20.0
 	var total_w: float = btn_w * 3.0 + spacing * 2.0
-	var start_x: float = (1152.0 - total_w) * 0.5
+	var start_x: float = (get_viewport_rect().size.x - total_w) * 0.5
 	var btn_y: float = 220.0
 
 	for i in range(choices.size()):
@@ -194,6 +202,10 @@ func _fade_and_load() -> void:
 	tween.tween_callback(func():
 		get_tree().reload_current_scene()
 	)
+
+func _open_pause_menu() -> void:
+	_pause_menu = PAUSE_MENU_SCENE.instantiate()
+	add_child(_pause_menu)
 
 func _make_stylebox(color: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()

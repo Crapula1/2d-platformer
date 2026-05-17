@@ -34,7 +34,7 @@ func _process(delta: float) -> void:
 		_prompt.modulate.a = 0.7 + sin(_time * 6.0) * 0.3
 
 	if _player_nearby and Input.is_action_just_pressed("interact"):
-		emit_signal("exited")
+		exited.emit()
 
 func _on_body_entered(body: Node) -> void:
 	if body is Player:

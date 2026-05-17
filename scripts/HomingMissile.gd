@@ -30,7 +30,7 @@ func setup(launch_velocity: Vector2, tgt: Node2D, dmg: int = 1) -> void:
 	damage = dmg
 	rotation = velocity.angle()
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_age += delta
 	lifetime -= delta
 	if lifetime <= 0.0:

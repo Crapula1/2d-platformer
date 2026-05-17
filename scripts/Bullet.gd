@@ -16,7 +16,7 @@ func _ready() -> void:
 	add_to_group("hazard")
 	body_entered.connect(_on_body_entered)
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	position += vel * delta
 	lifetime -= delta
 	if lifetime <= 0:
