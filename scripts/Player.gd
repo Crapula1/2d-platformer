@@ -47,10 +47,6 @@ var _arm_front: Line2D
 var _arm_back: Line2D
 var _hand_front: ColorRect
 var _hand_back: ColorRect
-var _attack_body: Node2D
-var _attack_body_torso: Node2D
-var _attack_body_visible: bool = false
-var _fade_tween: Tween = null
 var _attack_swing_origin_rot: float = 0.0
 var _attack_swing_origin_thrust: float = 0.0
 
@@ -238,9 +234,8 @@ func _update_timers(delta: float) -> void:
 		invincibility_timer -= delta
 		if invincibility_timer <= 0:
 			is_invincible = false
-			if not is_attacking and not _attack_body_visible:
-				sprite.modulate.a = 1.0
-		elif not is_attacking and not _attack_body_visible:
+			sprite.modulate.a = 1.0
+		else:
 			sprite.modulate.a = 0.3 if int(invincibility_timer * 20) % 2 == 0 else 1.0
 	_update_buffs(delta)
 
@@ -478,7 +473,6 @@ func _start_attack(stage: int) -> void:
 	_arm_back.visible = true
 	_hand_front.visible = true
 	_hand_back.visible = true
-	_show_attack_body()
 
 func _end_attack() -> void:
 	is_attacking = false
@@ -500,7 +494,6 @@ func _end_attack() -> void:
 	_arm_back.visible = false
 	_hand_front.visible = false
 	_hand_back.visible = false
-	_hide_attack_body()
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
@@ -556,34 +549,6 @@ func _stage_config(stage: int) -> Dictionary:
 				"thrust_end":   0.0,
 				"tint": Color(1.0, 0.85, 0.2),
 			}
-
-func _show_attack_body() -> void:
-	if _attack_body_visible:
-		return
-	_attack_body_visible = true
-	_attack_body.scale.x = 1.0 if facing_right else -1.0
-	if _fade_tween != null and _fade_tween.is_valid():
-		_fade_tween.kill()
-	_fade_tween = create_tween().set_parallel(true)
-	_fade_tween.tween_property(_attack_body, "modulate:a", 1.0, 0.08)
-	# Don't kill walk/idle modulate alpha to 0 — that would also kill the
-	# invincibility flicker logic. Instead fade to a low alpha so the rig
-	# reads cleanly on top.
-	_fade_tween.tween_property(sprite, "modulate:a", 0.0, 0.08)
-
-func _hide_attack_body() -> void:
-	if not _attack_body_visible:
-		return
-	_attack_body_visible = false
-	if _fade_tween != null and _fade_tween.is_valid():
-		_fade_tween.kill()
-	_fade_tween = create_tween().set_parallel(true)
-	_fade_tween.tween_property(_attack_body, "modulate:a", 0.0, 0.10)
-	_fade_tween.tween_property(sprite, "modulate:a", 1.0, 0.10)
-	# Snap pose back to neutral so the next show doesn't carry over a lean
-	_attack_body.rotation = 0.0
-	_attack_body.position.x = 0.0
-	_attack_body_torso.rotation = 0.0
 
 func _solve_ik(shoulder: Vector2, hand: Vector2, upper: float, fore: float, bend_sign: float) -> Vector2:
 	# Classic 2-bone IK: place an elbow so |shoulder→elbow|=upper and
@@ -696,7 +661,7 @@ func _build_axe() -> void:
 	# arms bend naturally as the marine reaches through the swing.
 	_arm_back = Line2D.new()
 	_arm_back.width = 3.2
-	_arm_back.default_color = Color(0.20, 0.30, 0.13)
+	_arm_back.default_color = Color(0.20, 0.34, 0.12)
 	_arm_back.z_index = 1
 	_arm_back.visible = false
 	_arm_back.begin_cap_mode = Line2D.LINE_CAP_ROUND
@@ -707,7 +672,7 @@ func _build_axe() -> void:
 
 	_arm_front = Line2D.new()
 	_arm_front.width = 3.4
-	_arm_front.default_color = Color(0.24, 0.36, 0.16)
+	_arm_front.default_color = Color(0.36, 0.56, 0.20)
 	_arm_front.z_index = 3
 	_arm_front.visible = false
 	_arm_front.begin_cap_mode = Line2D.LINE_CAP_ROUND
@@ -735,122 +700,6 @@ func _build_axe() -> void:
 	_hand_front.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hand_front)
 
-	_build_attack_body()
-
-func _build_attack_body() -> void:
-	# Dedicated attack-pose marine. Crossfades over the idle/walk sprite
-	# when a swing starts. Feet are planted in a fighting stance; the
-	# torso leans/twists with the active swing.
-	_attack_body = Node2D.new()
-	_attack_body.z_index = 0
-	_attack_body.modulate.a = 0.0
-	add_child(_attack_body)
-
-	# Back leg (planted, slightly back)
-	var leg_back := Polygon2D.new()
-	leg_back.color = Color(0.16, 0.22, 0.10)
-	leg_back.polygon = PackedVector2Array([
-		Vector2(-5.0, 7.0), Vector2(-1.5, 7.0),
-		Vector2(-2.5, 13.0), Vector2(-5.5, 13.0),
-	])
-	_attack_body.add_child(leg_back)
-	var boot_back := ColorRect.new()
-	boot_back.color = Color(0.06, 0.05, 0.03)
-	boot_back.offset_left = -6.0; boot_back.offset_top = 12.0
-	boot_back.offset_right = -2.0; boot_back.offset_bottom = 14.0
-	_attack_body.add_child(boot_back)
-
-	# Front leg (forward, slight bend)
-	var leg_front := Polygon2D.new()
-	leg_front.color = Color(0.20, 0.28, 0.13)
-	leg_front.polygon = PackedVector2Array([
-		Vector2(1.5, 7.0), Vector2(5.0, 7.0),
-		Vector2(6.0, 13.0), Vector2(3.0, 13.0),
-	])
-	_attack_body.add_child(leg_front)
-	var boot_front := ColorRect.new()
-	boot_front.color = Color(0.08, 0.06, 0.04)
-	boot_front.offset_left = 2.5; boot_front.offset_top = 12.0
-	boot_front.offset_right = 6.5; boot_front.offset_bottom = 14.0
-	_attack_body.add_child(boot_front)
-
-	# Torso node — twists / leans during the swing
-	_attack_body_torso = Node2D.new()
-	_attack_body.add_child(_attack_body_torso)
-
-	# Belt
-	var belt := ColorRect.new()
-	belt.color = Color(0.32, 0.22, 0.10)
-	belt.offset_left = -6.0; belt.offset_top = 5.0
-	belt.offset_right = 6.0; belt.offset_bottom = 7.5
-	_attack_body_torso.add_child(belt)
-
-	# Torso (slightly trapezoidal — broader at shoulders)
-	var torso := Polygon2D.new()
-	torso.color = Color(0.22, 0.32, 0.15)
-	torso.polygon = PackedVector2Array([
-		Vector2(-7.0, -2.0), Vector2(7.0, -2.0),
-		Vector2(6.0, 5.0),   Vector2(-6.0, 5.0),
-	])
-	_attack_body_torso.add_child(torso)
-
-	# Chest highlight band
-	var chest := Polygon2D.new()
-	chest.color = Color(0.30, 0.42, 0.18)
-	chest.polygon = PackedVector2Array([
-		Vector2(-5.0, 0.0), Vector2(5.0, 0.0),
-		Vector2(4.0, 3.5),  Vector2(-4.0, 3.5),
-	])
-	_attack_body_torso.add_child(chest)
-
-	# Shoulder pads
-	var shoulder_back := Polygon2D.new()
-	shoulder_back.color = Color(0.18, 0.26, 0.12)
-	shoulder_back.polygon = PackedVector2Array([
-		Vector2(-8.0, -3.0), Vector2(-4.0, -4.0),
-		Vector2(-3.0, 0.0), Vector2(-8.0, 0.0),
-	])
-	_attack_body_torso.add_child(shoulder_back)
-
-	var shoulder_front := Polygon2D.new()
-	shoulder_front.color = Color(0.25, 0.36, 0.15)
-	shoulder_front.polygon = PackedVector2Array([
-		Vector2(4.0, -4.0), Vector2(8.0, -3.0),
-		Vector2(8.0, 0.0), Vector2(3.0, 0.0),
-	])
-	_attack_body_torso.add_child(shoulder_front)
-
-	# Faceplate
-	var face := ColorRect.new()
-	face.color = Color(0.30, 0.30, 0.32)
-	face.offset_left = -4.5; face.offset_top = -8.0
-	face.offset_right = 4.5; face.offset_bottom = -2.5
-	_attack_body_torso.add_child(face)
-
-	# Visor slit (red)
-	var visor := ColorRect.new()
-	visor.color = Color(1.0, 0.18, 0.10)
-	visor.offset_left = -3.5; visor.offset_top = -6.5
-	visor.offset_right = 3.5; visor.offset_bottom = -4.5
-	_attack_body_torso.add_child(visor)
-
-	# Helmet
-	var helmet := Polygon2D.new()
-	helmet.color = Color(0.18, 0.26, 0.12)
-	helmet.polygon = PackedVector2Array([
-		Vector2(-5.0, -8.5), Vector2(-3.5, -13.0),
-		Vector2(3.5, -13.0), Vector2(5.0, -8.5),
-	])
-	_attack_body_torso.add_child(helmet)
-
-	# Helmet ridge highlight
-	var ridge := Polygon2D.new()
-	ridge.color = Color(0.25, 0.34, 0.15)
-	ridge.polygon = PackedVector2Array([
-		Vector2(-1.0, -13.0), Vector2(1.0, -13.0),
-		Vector2(1.0, -8.5), Vector2(-1.0, -8.5),
-	])
-	_attack_body_torso.add_child(ridge)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
@@ -989,42 +838,32 @@ func _update_sprite(delta: float) -> void:
 		_hand_front.position = front_grip - Vector2(2.0, 2.0)
 		_hand_back.position  = back_grip - Vector2(2.0, 2.0)
 
-		# Body engagement: lean the attack body into the swing during the
-		# strike phase, then settle. Twist the torso independently for a
-		# wind-up coil → release feel. Stab adds a small step-forward.
-		_attack_body.scale.x = face_dir
+		# Body engagement: lean the marine sprite into the swing during the
+		# strike phase. The lean is applied with facing direction so the
+		# marine always tilts into the swing, not against it.
 		var lean_amount: float = 0.0
-		var twist_amount: float = 0.0
 		if attack_stage == 1:
-			lean_amount = 0.20
-			twist_amount = 0.18
+			lean_amount = 0.18
 		elif attack_stage == 2:
-			lean_amount = 0.28
-			twist_amount = 0.26
+			lean_amount = 0.25
 		elif attack_stage == 3:
-			lean_amount = 0.06
-			twist_amount = -0.05
-		# Lean kicks in around the strike (t≈0.30..0.80), settles after.
+			lean_amount = 0.05
 		var lean_t: float = clampf((t - 0.30) / 0.50, 0.0, 1.0)
 		var lean_decay: float = clampf((t - 0.80) / 0.20, 0.0, 1.0)
-		var lean_now: float = lean_amount * lean_t * (1.0 - lean_decay * 0.6)
-		# Torso twist: starts coiled BACK during windup, snaps FORWARD on strike
-		var twist_now: float = 0.0
-		if t < 0.30:
-			twist_now = -twist_amount * (t / 0.30)
-		else:
-			var tt: float = clampf((t - 0.30) / 0.50, 0.0, 1.0)
-			twist_now = lerpf(-twist_amount, twist_amount, 1.0 - pow(1.0 - tt, 3.0))
-		_attack_body.rotation = lerpf(_attack_body.rotation, lean_now, minf(delta * 26.0, 1.0))
-		_attack_body_torso.rotation = lerpf(_attack_body_torso.rotation, twist_now, minf(delta * 26.0, 1.0))
+		var lean_now: float = lean_amount * lean_t * (1.0 - lean_decay * 0.6) * face_dir
+		sprite.rotation = lerpf(sprite.rotation, lean_now, minf(delta * 26.0, 1.0))
 
-		# Stab step-forward
+		# Stab step-forward: shift the sprite slightly in facing direction
 		var step_offset: float = 0.0
 		if attack_stage == 3:
 			var step_t: float = clampf((t - 0.15) / 0.45, 0.0, 1.0)
 			var step_back: float = clampf((t - 0.70) / 0.30, 0.0, 1.0)
 			step_offset = 3.0 * step_t * (1.0 - step_back)
-		_attack_body.position.x = lerpf(_attack_body.position.x, step_offset * face_dir, minf(delta * 26.0, 1.0))
+		sprite.position.x = lerpf(sprite.position.x, step_offset * face_dir, minf(delta * 26.0, 1.0))
+	else:
+		# Settle the sprite back to its rest pose between swings.
+		sprite.rotation = lerpf(sprite.rotation, 0.0, minf(delta * 18.0, 1.0))
+		sprite.position.x = lerpf(sprite.position.x, 0.0, minf(delta * 18.0, 1.0))
 
 	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
 	if sprite.animation != anim:
