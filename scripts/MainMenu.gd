@@ -1,4 +1,7 @@
 extends Control
+# Main menu: solo Start / Multiplayer (host or join) / Options / Quit.
+# The multiplayer flow is a sub-panel that swaps in when MULTIPLAYER is
+# pressed, so the main screen stays clean.
 
 const GAME_SCENE := "res://scenes/Main.tscn"
 const OPTIONS_SCENE := "res://scenes/OptionsMenu.tscn"
@@ -9,62 +12,140 @@ const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 @onready var quit_button: Button = $VBox/QuitButton
 @onready var vbox: VBoxContainer = $VBox
 
-var host_button: Button
-var join_button: Button
+var mp_button: Button
+var mp_panel: PanelContainer
 var name_edit: LineEdit
 var ip_edit: LineEdit
 var port_edit: LineEdit
 var status_label: Label
+var host_button: Button
+var join_button: Button
+var back_button: Button
 
 func _ready() -> void:
 	start_button.pressed.connect(_on_start)
 	options_button.pressed.connect(_on_options)
 	quit_button.pressed.connect(_on_quit)
-	_build_multiplayer_ui()
+	_insert_multiplayer_button()
+	_build_multiplayer_panel()
 	start_button.grab_focus()
 	Net.connection_failed.connect(_on_connection_failed)
 	Net.disconnected.connect(_on_disconnected)
 
-func _build_multiplayer_ui() -> void:
-	# Append host/join controls under the existing VBox so the styled main
-	# menu layout is preserved.
-	host_button = Button.new()
-	host_button.custom_minimum_size = Vector2(140, 26)
-	host_button.text = "HOST"
-	host_button.add_theme_font_size_override("font_size", 14)
-	host_button.pressed.connect(_on_host_pressed)
-	vbox.add_child(host_button)
+func _insert_multiplayer_button() -> void:
+	mp_button = Button.new()
+	mp_button.custom_minimum_size = Vector2(140, 26)
+	mp_button.text = "MULTIPLAYER"
+	mp_button.add_theme_font_size_override("font_size", 14)
+	mp_button.pressed.connect(_show_mp_panel)
+	vbox.add_child(mp_button)
+	# Slot it just under START so the order reads Start / MP / Options / Quit.
+	vbox.move_child(mp_button, 1)
 
-	join_button = Button.new()
-	join_button.custom_minimum_size = Vector2(140, 26)
-	join_button.text = "JOIN"
-	join_button.add_theme_font_size_override("font_size", 14)
-	join_button.pressed.connect(_on_join_pressed)
-	vbox.add_child(join_button)
+func _build_multiplayer_panel() -> void:
+	mp_panel = PanelContainer.new()
+	mp_panel.set_anchors_preset(Control.PRESET_CENTER)
+	mp_panel.custom_minimum_size = Vector2(300, 260)
+	mp_panel.position = Vector2(-150, -130)
+	mp_panel.visible = false
+	add_child(mp_panel)
 
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	mp_panel.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	margin.add_child(vb)
+
+	var title := Label.new()
+	title.text = "MULTIPLAYER"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	vb.add_child(title)
+
+	var hint := Label.new()
+	hint.text = "Host opens a server on this port.\nJoin connects to host's IP:port."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 10)
+	hint.add_theme_color_override("font_color", Color(0.55, 0.7, 0.85))
+	vb.add_child(hint)
+
+	vb.add_child(_field_label("Name"))
 	name_edit = LineEdit.new()
-	name_edit.placeholder_text = "name"
 	name_edit.text = "Player"
 	name_edit.max_length = 16
-	name_edit.custom_minimum_size = Vector2(140, 22)
-	vbox.add_child(name_edit)
+	vb.add_child(name_edit)
 
+	vb.add_child(_field_label("Host IP (Join only)"))
 	ip_edit = LineEdit.new()
-	ip_edit.placeholder_text = "host ip (join only)"
 	ip_edit.text = "127.0.0.1"
-	ip_edit.custom_minimum_size = Vector2(140, 22)
-	vbox.add_child(ip_edit)
+	vb.add_child(ip_edit)
 
+	vb.add_child(_field_label("Port"))
 	port_edit = LineEdit.new()
-	port_edit.placeholder_text = "port"
 	port_edit.text = str(Net.DEFAULT_PORT)
-	port_edit.custom_minimum_size = Vector2(140, 22)
-	vbox.add_child(port_edit)
+	vb.add_child(port_edit)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	vb.add_child(row)
+
+	host_button = Button.new()
+	host_button.text = "HOST"
+	host_button.custom_minimum_size = Vector2(80, 28)
+	host_button.add_theme_font_size_override("font_size", 14)
+	host_button.pressed.connect(_on_host_pressed)
+	row.add_child(host_button)
+
+	join_button = Button.new()
+	join_button.text = "JOIN"
+	join_button.custom_minimum_size = Vector2(80, 28)
+	join_button.add_theme_font_size_override("font_size", 14)
+	join_button.pressed.connect(_on_join_pressed)
+	row.add_child(join_button)
+
+	back_button = Button.new()
+	back_button.text = "BACK"
+	back_button.custom_minimum_size = Vector2(60, 28)
+	back_button.add_theme_font_size_override("font_size", 14)
+	back_button.pressed.connect(_hide_mp_panel)
+	row.add_child(back_button)
 
 	status_label = Label.new()
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
-	vbox.add_child(status_label)
+	status_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.4))
+	vb.add_child(status_label)
+
+func _field_label(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 10)
+	l.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	return l
+
+func _show_mp_panel() -> void:
+	mp_panel.visible = true
+	vbox.visible = false
+	status_label.text = ""
+	name_edit.grab_focus()
+	name_edit.select_all()
+
+func _hide_mp_panel() -> void:
+	mp_panel.visible = false
+	vbox.visible = true
+	status_label.text = ""
+	start_button.grab_focus()
+
+func _input(event: InputEvent) -> void:
+	# Esc from the MP panel pops back to the main menu, not out of the game.
+	if mp_panel != null and mp_panel.visible and event.is_action_pressed("ui_cancel"):
+		_hide_mp_panel()
+		accept_event()
 
 func _on_start() -> void:
 	RunState.start_new_run()
