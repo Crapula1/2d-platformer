@@ -33,40 +33,43 @@ func _build_ui() -> void:
 	bg.color = Color(0.04, 0.06, 0.10)
 	add_child(bg)
 
+	# Margins tuned for the 640×360 design viewport — content stretches to
+	# fill whatever window size canvas_items mode scales us to.
 	var root := VBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.offset_left = 60
-	root.offset_top = 32
-	root.offset_right = -60
-	root.offset_bottom = -32
-	root.add_theme_constant_override("separation", 10)
+	root.offset_left = 20
+	root.offset_top = 8
+	root.offset_right = -20
+	root.offset_bottom = -8
+	root.add_theme_constant_override("separation", 6)
 	add_child(root)
 
 	var title := Label.new()
 	title.text = "LOBBY"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	title.add_theme_constant_override("outline_size", 4)
 	root.add_child(title)
 
+	# Combined address + player count line keeps the header compact.
 	address_label = Label.new()
 	address_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	address_label.add_theme_font_size_override("font_size", 11)
+	address_label.add_theme_font_size_override("font_size", 10)
 	address_label.add_theme_color_override("font_color", Color(0.55, 0.7, 0.85))
 	root.add_child(address_label)
-	_update_address_label()
 
 	count_label = Label.new()
 	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	count_label.add_theme_font_size_override("font_size", 12)
+	count_label.add_theme_font_size_override("font_size", 10)
 	count_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
 	root.add_child(count_label)
+	_update_address_label()
 
 	var list_frame := PanelContainer.new()
 	list_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	list_frame.custom_minimum_size = Vector2(0, 140)
+	list_frame.custom_minimum_size = Vector2(0, 60)
 	root.add_child(list_frame)
 
 	var scroll := ScrollContainer.new()
@@ -82,13 +85,13 @@ func _build_ui() -> void:
 	var pick_header := Label.new()
 	pick_header.text = "PICK YOUR CHARACTER"
 	pick_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pick_header.add_theme_font_size_override("font_size", 12)
+	pick_header.add_theme_font_size_override("font_size", 10)
 	pick_header.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
 	root.add_child(pick_header)
 
 	var picker := HBoxContainer.new()
 	picker.alignment = BoxContainer.ALIGNMENT_CENTER
-	picker.add_theme_constant_override("separation", 16)
+	picker.add_theme_constant_override("separation", 10)
 	root.add_child(picker)
 	for c in Net.CHARACTERS:
 		picker.add_child(_build_character_tile(c))
@@ -209,7 +212,7 @@ func _build_character_tile(character: String) -> Control:
 	var accent: Color = CHAR_COLORS.get(character, Color(0.6, 0.85, 1.0))
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(150, 170)
+	panel.custom_minimum_size = Vector2(120, 110)
 	panel.add_theme_stylebox_override("panel", _tile_style(accent, false))
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.gui_input.connect(func(ev: InputEvent) -> void:
@@ -219,27 +222,27 @@ func _build_character_tile(character: String) -> Control:
 	)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 8)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.add_theme_constant_override("margin_left", 6)
+	margin.add_theme_constant_override("margin_right", 6)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
 	panel.add_child(margin)
 
 	var vb := VBoxContainer.new()
 	vb.alignment = BoxContainer.ALIGNMENT_CENTER
-	vb.add_theme_constant_override("separation", 6)
+	vb.add_theme_constant_override("separation", 3)
 	margin.add_child(vb)
 
 	# Preview area: marine uses the idle sprite, demon gets a polygon mock-up.
 	var preview := _build_preview(character, accent)
-	preview.custom_minimum_size = Vector2(64, 70)
+	preview.custom_minimum_size = Vector2(48, 48)
 	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	vb.add_child(preview)
 
 	var name_lbl := Label.new()
 	name_lbl.text = character.to_upper()
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_lbl.add_theme_font_size_override("font_size", 16)
+	name_lbl.add_theme_font_size_override("font_size", 13)
 	name_lbl.add_theme_color_override("font_color", accent)
 	vb.add_child(name_lbl)
 
@@ -247,7 +250,7 @@ func _build_character_tile(character: String) -> Control:
 	desc.text = CHAR_DESCRIPTIONS.get(character, "")
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.add_theme_font_size_override("font_size", 9)
+	desc.add_theme_font_size_override("font_size", 8)
 	desc.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9))
 	vb.add_child(desc)
 
