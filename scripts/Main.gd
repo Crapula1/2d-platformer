@@ -69,15 +69,15 @@ func _ready() -> void:
 	add_child(_level)
 	move_child(_level, 0)
 
-	spawner.spawn_function = _spawn_player_node
-	projectile_spawner.spawn_function = _spawn_projectile_node
-	players_root.child_entered_tree.connect(_on_player_entered)
-	Net.player_late_joined.connect(_on_player_late_joined)
-	Net.player_list_changed.connect(_reconcile_players)
-
 	await get_tree().process_frame
 
-	spawn_position = _find_spawn_position()
+	# Hard split: no multiplayer peer → run solo with the Player that ships
+	# inside Level.tscn. With a peer → tear that one out and use the
+	# Players spawner per peer.
+	if multiplayer.has_multiplayer_peer():
+		await _setup_multiplayer()
+	else:
+		_setup_singleplayer()
 
 	for goal in get_tree().get_nodes_in_group("goal"):
 		goal.reached.connect(_on_level_exit)
@@ -88,15 +88,53 @@ func _ready() -> void:
 	message_label.text = ""
 	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  1/2: Weapon  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
 
-	# Solo (no active peer) and host (peer + is_server) both need to spawn;
-	# clients just wait for the host to spawn them through the spawner.
-	if not multiplayer.has_multiplayer_peer():
-		_spawn_all_players()
-	elif multiplayer.is_server():
+func _setup_singleplayer() -> void:
+	# Level.tscn already contains the Player as a direct child.
+	player = get_tree().get_first_node_in_group("player") as Player
+	if player == null:
+		return
+	if RunState.depth > 0:
+		RunState.apply_to_player(player)
+	spawn_position = player.global_position
+	_wire_hud_to_player(player)
+
+func _setup_multiplayer() -> void:
+	# Remove the solo Player that's baked into Level so the spawner is the
+	# sole source of player nodes.
+	var embedded := get_tree().get_first_node_in_group("player")
+	if embedded != null:
+		embedded.queue_free()
+
+	spawner.spawn_function = _spawn_player_node
+	projectile_spawner.spawn_function = _spawn_projectile_node
+	players_root.child_entered_tree.connect(_on_player_entered)
+	Net.player_late_joined.connect(_on_player_late_joined)
+	Net.player_list_changed.connect(_reconcile_players)
+
+	await get_tree().process_frame
+	spawn_position = _find_spawn_position()
+
+	if multiplayer.is_server():
 		await get_tree().create_timer(0.5).timeout
 		_spawn_all_players()
 	else:
 		Net.client_main_ready.rpc_id(1)
+
+func _wire_hud_to_player(p: Player) -> void:
+	player = p
+	player.health_changed.connect(_on_health_changed)
+	player.score_changed.connect(_on_score_changed)
+	player.died.connect(_on_player_died)
+	player.grenade_changed.connect(_on_grenade_changed)
+	player.jetpack_changed.connect(_on_jetpack_changed)
+	player.weapon_changed.connect(_on_weapon_changed)
+	player.shotgun_shells_changed.connect(_on_shotgun_shells_changed)
+	_on_health_changed(player.current_health, player.max_health)
+	_on_score_changed(player.score)
+	_on_grenade_changed(Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
+	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
+	_on_weapon_changed(Player.WEAPON_NAMES[player.weapon])
+	_on_shotgun_shells_changed(player._shotgun_shells, player.shotgun_capacity)
 
 func _find_spawn_position() -> Vector2:
 	if _level == null:
@@ -181,33 +219,18 @@ func _reconcile_players() -> void:
 			child.queue_free()
 
 func _on_player_entered(node: Node) -> void:
+	# MP-only: a peer's player just spawned through the MultiplayerSpawner.
 	if not (node is Player):
 		return
 	var p := node as Player
 	await get_tree().process_frame
-	# In solo (no multiplayer peer) is_multiplayer_authority() can be false on
-	# every player because get_unique_id() returns 0; treat "no peer" as local.
-	var is_local: bool = (not multiplayer.has_multiplayer_peer()) or p.is_multiplayer_authority()
-	if not is_local:
+	if not p.is_multiplayer_authority():
 		return
-	player = p
 	if RunState.depth > 0:
-		RunState.apply_to_player(player)
-	player.health_changed.connect(_on_health_changed)
-	player.score_changed.connect(_on_score_changed)
-	player.died.connect(_on_player_died)
-	player.grenade_changed.connect(_on_grenade_changed)
-	player.jetpack_changed.connect(_on_jetpack_changed)
-	player.weapon_changed.connect(_on_weapon_changed)
-	player.shotgun_shells_changed.connect(_on_shotgun_shells_changed)
-	_on_health_changed(player.current_health, player.max_health)
-	_on_score_changed(player.score)
-	_on_grenade_changed(Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
-	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
-	_on_weapon_changed(Player.WEAPON_NAMES[player.weapon])
-	_on_shotgun_shells_changed(player._shotgun_shells, player.shotgun_capacity)
+		RunState.apply_to_player(p)
+	_wire_hud_to_player(p)
 	if _level != null and _level.has_method("apply_camera_limits_for_room"):
-		_level.apply_camera_limits_for_room(player, 0)
+		_level.apply_camera_limits_for_room(p, 0)
 
 func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("pause") and not is_instance_valid(_pause_menu):
