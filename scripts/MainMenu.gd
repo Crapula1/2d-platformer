@@ -176,14 +176,14 @@ func _on_host_pressed() -> void:
 	if Net.host(_port_value(), _player_name()):
 		get_tree().change_scene_to_file(LOBBY_SCENE)
 	else:
-		status_label.text = "Failed to host on port %d" % _port_value()
+		status_label.text = Net.last_error if Net.last_error != "" else "Failed to host on port %d" % _port_value()
 
 func _on_join_pressed() -> void:
 	status_label.text = "Connecting..."
 	if Net.join(ip_edit.text.strip_edges(), _port_value(), _player_name()):
 		get_tree().change_scene_to_file(LOBBY_SCENE)
 	else:
-		status_label.text = "Failed to start client"
+		status_label.text = Net.last_error if Net.last_error != "" else "Failed to start client"
 
 func _on_connection_failed() -> void:
 	status_label.text = "Connection failed"

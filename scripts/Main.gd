@@ -104,6 +104,7 @@ func _find_spawn_position() -> Vector2:
 func _spawn_all_players() -> void:
 	if Net.players.is_empty():
 		Net.players[1] = {"name": "Player", "character": "marine", "ready": true}
+	var has_peer := multiplayer.has_multiplayer_peer()
 	var i := 0
 	for peer_id in Net.players.keys():
 		if players_root.has_node("P_%d" % int(peer_id)):
@@ -111,12 +112,20 @@ func _spawn_all_players() -> void:
 			continue
 		var entry: Dictionary = Net.players[peer_id]
 		var offset := Vector2(i * 32, 0)
-		spawner.spawn({
+		var data := {
 			"peer": int(peer_id),
 			"character": String(entry.character),
 			"x": spawn_position.x + offset.x,
 			"y": spawn_position.y + offset.y,
-		})
+		}
+		if has_peer:
+			spawner.spawn(data)
+		else:
+			# Solo run: no multiplayer peer means spawner.spawn() doesn't
+			# materialize a node. Build it directly and parent it so the
+			# existing _on_player_entered hookup still fires.
+			var node := _spawn_player_node(data)
+			players_root.add_child(node)
 		i += 1
 
 func _spawn_player_node(data: Dictionary) -> Node:

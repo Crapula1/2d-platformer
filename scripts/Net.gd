@@ -32,17 +32,22 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
+var last_error: String = ""
+
 func host(port: int, player_name: String) -> bool:
 	local_name = player_name
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
+		last_error = "create_server failed (err %d) — port %d likely in use" % [err, port]
+		push_warning("[Net] " + last_error)
 		return false
 	multiplayer.multiplayer_peer = peer
 	is_host = true
 	players.clear()
 	players[1] = _make_entry(local_name, local_character, false)
 	player_list_changed.emit()
+	last_error = ""
 	return true
 
 func join(ip: String, port: int, player_name: String) -> bool:
@@ -50,9 +55,12 @@ func join(ip: String, port: int, player_name: String) -> bool:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(ip, port)
 	if err != OK:
+		last_error = "create_client failed (err %d) for %s:%d" % [err, ip, port]
+		push_warning("[Net] " + last_error)
 		return false
 	multiplayer.multiplayer_peer = peer
 	is_host = false
+	last_error = ""
 	return true
 
 func leave() -> void:
