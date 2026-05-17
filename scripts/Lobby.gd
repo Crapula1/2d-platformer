@@ -6,14 +6,19 @@ const CHAR_COLORS := {
 	"marine": Color(0.55, 0.92, 1.0),
 	"demon":  Color(0.95, 0.35, 0.30),
 }
+const CHAR_DESCRIPTIONS := {
+	"marine": "Standard kit:\nrifle + shotgun + axe combo",
+	"demon":  "Flame-tinted bruiser:\nmelee hitbox only (no axe yet)",
+}
+const MARINE_ICON_PATH := "res://assets/sprites/frames/idle_0.png"
 
 var list_box: VBoxContainer
 var ready_btn: Button
-var char_btn: Button
 var start_btn: Button
 var status_label: Label
 var count_label: Label
 var address_label: Label
+var char_tiles: Dictionary = {}  # character_name -> { panel, accent }
 
 func _ready() -> void:
 	Net.player_list_changed.connect(_refresh)
@@ -73,17 +78,27 @@ func _build_ui() -> void:
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list_box)
 
+	# --- Character select tiles -----------------------------------------
+	var pick_header := Label.new()
+	pick_header.text = "PICK YOUR CHARACTER"
+	pick_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pick_header.add_theme_font_size_override("font_size", 12)
+	pick_header.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	root.add_child(pick_header)
+
+	var picker := HBoxContainer.new()
+	picker.alignment = BoxContainer.ALIGNMENT_CENTER
+	picker.add_theme_constant_override("separation", 16)
+	root.add_child(picker)
+	for c in Net.CHARACTERS:
+		picker.add_child(_build_character_tile(c))
+	_refresh_tile_selection()
+
+	# --- Action buttons --------------------------------------------------
 	var controls := HBoxContainer.new()
 	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	controls.add_theme_constant_override("separation", 8)
 	root.add_child(controls)
-
-	char_btn = Button.new()
-	char_btn.text = "Character: %s" % Net.local_character
-	char_btn.custom_minimum_size = Vector2(150, 28)
-	char_btn.add_theme_font_size_override("font_size", 13)
-	char_btn.pressed.connect(_on_cycle_character)
-	controls.add_child(char_btn)
 
 	ready_btn = Button.new()
 	ready_btn.text = "Ready"
@@ -190,11 +205,120 @@ func _make_row(id: int, p: Dictionary, is_me: bool) -> HBoxContainer:
 
 	return row
 
-func _on_cycle_character() -> void:
-	var idx := Net.CHARACTERS.find(Net.local_character)
-	idx = (idx + 1) % Net.CHARACTERS.size()
-	Net.set_local_character(Net.CHARACTERS[idx])
-	char_btn.text = "Character: %s" % Net.local_character
+func _build_character_tile(character: String) -> Control:
+	var accent: Color = CHAR_COLORS.get(character, Color(0.6, 0.85, 1.0))
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(150, 170)
+	panel.add_theme_stylebox_override("panel", _tile_style(accent, false))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed \
+				and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			_select_character(character)
+	)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+
+	var vb := VBoxContainer.new()
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 6)
+	margin.add_child(vb)
+
+	# Preview area: marine uses the idle sprite, demon gets a polygon mock-up.
+	var preview := _build_preview(character, accent)
+	preview.custom_minimum_size = Vector2(64, 70)
+	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vb.add_child(preview)
+
+	var name_lbl := Label.new()
+	name_lbl.text = character.to_upper()
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.add_theme_font_size_override("font_size", 16)
+	name_lbl.add_theme_color_override("font_color", accent)
+	vb.add_child(name_lbl)
+
+	var desc := Label.new()
+	desc.text = CHAR_DESCRIPTIONS.get(character, "")
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_font_size_override("font_size", 9)
+	desc.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9))
+	vb.add_child(desc)
+
+	char_tiles[character] = { "panel": panel, "accent": accent }
+	return panel
+
+func _build_preview(character: String, accent: Color) -> Control:
+	if character == "marine":
+		var tex := Control.new()
+		var rect := TextureRect.new()
+		rect.texture = load(MARINE_ICON_PATH) as Texture2D
+		rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		rect.anchor_right = 1.0
+		rect.anchor_bottom = 1.0
+		tex.add_child(rect)
+		return tex
+	# Demon preview — small stylized stand-in with the avatar's accent color.
+	var holder := Control.new()
+	var body := ColorRect.new()
+	body.color = accent
+	body.offset_left = 18; body.offset_top = 24
+	body.offset_right = 46; body.offset_bottom = 60
+	holder.add_child(body)
+	var head := ColorRect.new()
+	head.color = accent.darkened(0.15)
+	head.offset_left = 22; head.offset_top = 8
+	head.offset_right = 42; head.offset_bottom = 26
+	holder.add_child(head)
+	var horn_l := Polygon2D.new()
+	horn_l.color = Color(0.10, 0.05, 0.05)
+	horn_l.polygon = PackedVector2Array([Vector2(22, 8), Vector2(26, 8), Vector2(24, 0), Vector2(20, 4)])
+	holder.add_child(horn_l)
+	var horn_r := Polygon2D.new()
+	horn_r.color = Color(0.10, 0.05, 0.05)
+	horn_r.polygon = PackedVector2Array([Vector2(38, 8), Vector2(42, 8), Vector2(44, 4), Vector2(40, 0)])
+	holder.add_child(horn_r)
+	var eye := ColorRect.new()
+	eye.color = Color(1.0, 0.95, 0.4)
+	eye.offset_left = 28; eye.offset_top = 14
+	eye.offset_right = 36; eye.offset_bottom = 20
+	holder.add_child(eye)
+	return holder
+
+func _tile_style(accent: Color, selected: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.14, 0.22) if not selected else Color(0.18, 0.25, 0.38)
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.border_color = accent if selected else Color(0.30, 0.38, 0.50)
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.corner_radius_bottom_right = 4
+	return sb
+
+func _refresh_tile_selection() -> void:
+	for c in char_tiles.keys():
+		var entry: Dictionary = char_tiles[c]
+		var panel := entry["panel"] as PanelContainer
+		var selected := (c == Net.local_character)
+		panel.add_theme_stylebox_override("panel", _tile_style(entry["accent"], selected))
+
+func _select_character(character: String) -> void:
+	if Net.local_character == character:
+		return
+	Net.set_local_character(character)
+	_refresh_tile_selection()
 
 func _on_ready_toggled(pressed: bool) -> void:
 	Net.set_local_ready(pressed)
