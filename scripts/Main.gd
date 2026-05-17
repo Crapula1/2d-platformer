@@ -88,9 +88,12 @@ func _ready() -> void:
 	message_label.text = ""
 	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  1/2: Weapon  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
 
-	if multiplayer.is_server():
-		if multiplayer.has_multiplayer_peer():
-			await get_tree().create_timer(0.5).timeout
+	# Solo (no active peer) and host (peer + is_server) both need to spawn;
+	# clients just wait for the host to spawn them through the spawner.
+	if not multiplayer.has_multiplayer_peer():
+		_spawn_all_players()
+	elif multiplayer.is_server():
+		await get_tree().create_timer(0.5).timeout
 		_spawn_all_players()
 	else:
 		Net.client_main_ready.rpc_id(1)
