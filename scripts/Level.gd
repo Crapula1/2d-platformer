@@ -30,28 +30,47 @@ const GROUND_BOTTOM: float =   720.0  # top of the sealed lower floor
 const FLOOR_BOTTOM:  float =   820.0
 const CEILING_BOT:   float =   -40.0
 
-const COL_BG_TOP:     Color = Color(0.06, 0.08, 0.14)
-const COL_BG_BOT:     Color = Color(0.13, 0.17, 0.26)
-const COL_FAR_HILL:   Color = Color(0.09, 0.12, 0.20)
-const COL_MID_TOWER:  Color = Color(0.12, 0.15, 0.23)
-const COL_NEAR_PROP:  Color = Color(0.16, 0.19, 0.26)
-const COL_WALL:       Color = Color(0.18, 0.20, 0.25)
-const COL_GROUND:     Color = Color(0.20, 0.23, 0.28)
-const COL_GRASS:      Color = Color(0.30, 0.55, 0.34)
-const COL_PLAT:       Color = Color(0.28, 0.32, 0.38)
-const COL_PLAT_TOP:   Color = Color(0.40, 0.45, 0.52)
-const COL_FLOOR:      Color = Color(0.10, 0.12, 0.16)
-const COL_PIT_GLOW:   Color = Color(0.55, 0.20, 0.10, 0.18)
-const COL_MOVE:       Color = Color(0.22, 0.50, 0.72)
-const COL_BREAK:      Color = Color(0.55, 0.32, 0.18)
-const COL_CRATE:      Color = Color(0.46, 0.31, 0.18)
-const COL_CRATE_EDGE: Color = Color(0.28, 0.18, 0.10)
-const COL_PIPE:       Color = Color(0.20, 0.24, 0.30)
-const COL_PIPE_HI:    Color = Color(0.36, 0.42, 0.50)
-const COL_CABLE:      Color = Color(0.08, 0.09, 0.13)
-const COL_SIGN_BG:    Color = Color(0.85, 0.75, 0.25)
-const COL_SIGN_FG:    Color = Color(0.20, 0.15, 0.08)
-const COL_EXIT_HALO:  Color = Color(0.30, 0.85, 0.45, 0.16)
+# Jungle palette (Contra Stage 1 inspired)
+# Sky: deep teal at top fading to a warm cyan-beige horizon
+const COL_BG_TOP:      Color = Color(0.04, 0.10, 0.18)
+const COL_BG_BOT:      Color = Color(0.30, 0.50, 0.46)
+# Far misty mountain ridges
+const COL_FAR_HILL:    Color = Color(0.20, 0.30, 0.36)
+# Mid-ground jungle canopy
+const COL_MID_CANOPY:  Color = Color(0.08, 0.22, 0.14)
+const COL_MID_TRUNK:   Color = Color(0.18, 0.12, 0.07)
+# Foreground palm trees
+const COL_TRUNK:       Color = Color(0.22, 0.14, 0.08)
+const COL_TRUNK_HI:    Color = Color(0.34, 0.22, 0.12)
+const COL_FROND:       Color = Color(0.16, 0.42, 0.18)
+const COL_FROND_HI:    Color = Color(0.26, 0.56, 0.22)
+# Walls / sealed bounds — dark earth
+const COL_WALL:        Color = Color(0.13, 0.10, 0.07)
+# Ground: dirt body with bright jungle grass top
+const COL_GROUND:      Color = Color(0.32, 0.22, 0.13)
+const COL_GROUND_DARK: Color = Color(0.22, 0.15, 0.08)
+const COL_GRASS:       Color = Color(0.24, 0.66, 0.22)
+# Platforms: mossy stone
+const COL_PLAT:        Color = Color(0.36, 0.34, 0.28)
+const COL_PLAT_TOP:    Color = Color(0.28, 0.60, 0.22)
+const COL_FLOOR:       Color = Color(0.06, 0.04, 0.02)
+const COL_PIT_GLOW:    Color = Color(0.60, 0.22, 0.10, 0.18)
+# Moving platform: wooden raft with a teal tint so it still reads as "moving"
+const COL_MOVE:        Color = Color(0.22, 0.55, 0.62)
+# Break platform: rotten plank
+const COL_BREAK:       Color = Color(0.55, 0.32, 0.16)
+# Rocky outcrops
+const COL_ROCK:        Color = Color(0.44, 0.42, 0.38)
+const COL_ROCK_EDGE:   Color = Color(0.24, 0.22, 0.18)
+const COL_ROCK_TOP:    Color = Color(0.26, 0.58, 0.22)  # mossy cap
+# Vines & branches
+const COL_VINE:        Color = Color(0.18, 0.40, 0.16)
+const COL_VINE_HI:     Color = Color(0.28, 0.56, 0.22)
+const COL_CABLE:       Color = Color(0.14, 0.32, 0.10)  # hanging vine ropes
+# Wooden signs
+const COL_SIGN_BG:     Color = Color(0.65, 0.48, 0.25)
+const COL_SIGN_FG:     Color = Color(0.20, 0.12, 0.06)
+const COL_EXIT_HALO:   Color = Color(0.30, 0.85, 0.45, 0.16)
 
 # Z-index plan:
 #  -10 .. -8 : parallax background layers (sky, hills, towers)
@@ -83,28 +102,28 @@ func _build_parallax_background() -> void:
 	var pbg := ParallaxBackground.new()
 	add_child(pbg)
 
-	# Sky gradient (no scroll) — top dark, bottom slightly warmer
+	# Sky gradient (no scroll)
 	var sky := ParallaxLayer.new()
 	sky.motion_scale = Vector2.ZERO
 	pbg.add_child(sky)
 	_paint_sky_gradient(sky)
 
-	# Far hills — slow scroll
+	# Far misty mountain ridges — slow scroll
 	var far := ParallaxLayer.new()
 	far.motion_scale = Vector2(0.18, 0.0)
 	far.motion_mirroring = Vector2(1280.0, 0.0)
 	pbg.add_child(far)
 	_paint_far_hills(far)
 
-	# Mid towers — medium scroll
+	# Mid-ground jungle canopy — medium scroll
 	var mid := ParallaxLayer.new()
 	mid.motion_scale = Vector2(0.42, 0.05)
 	mid.motion_mirroring = Vector2(960.0, 0.0)
 	pbg.add_child(mid)
-	_paint_mid_towers(mid)
+	_paint_mid_canopy(mid)
 
-	# Near vertical pillars — fast scroll, attached to world coords (long, no mirror)
-	_paint_near_pillars()
+	# Foreground palm trees + hanging vines — attached to world coords
+	_paint_near_trees()
 
 func _paint_sky_gradient(parent: Node) -> void:
 	var steps := 8
@@ -120,68 +139,169 @@ func _paint_sky_gradient(parent: Node) -> void:
 		parent.add_child(band)
 
 func _paint_far_hills(parent: Node) -> void:
-	var seeds: Array[float] = [0.0, 180.0, 360.0, 540.0, 720.0, 900.0, 1080.0]
-	for sx in seeds:
-		var hill := Polygon2D.new()
-		hill.z_index = -9
-		hill.color = COL_FAR_HILL
-		var h: float = 130.0 + sin(sx * 0.013) * 40.0
-		var w: float = 220.0
-		var base_y: float = 560.0
-		hill.polygon = PackedVector2Array([
-			Vector2(sx,           base_y),
-			Vector2(sx + w * 0.5, base_y - h),
-			Vector2(sx + w,       base_y),
-		])
-		parent.add_child(hill)
-
-func _paint_mid_towers(parent: Node) -> void:
-	var spots: Array[Vector2] = [
-		Vector2(60,  280), Vector2(220, 220), Vector2(380, 300),
-		Vector2(540, 180), Vector2(700, 260), Vector2(860, 230),
+	# Two ridges of rolling mountains, layered for depth
+	var bases: Array = [
+		{"y": 600.0, "col": COL_FAR_HILL.darkened(0.15), "h": 90.0, "step": 220.0},
+		{"y": 620.0, "col": COL_FAR_HILL,                "h": 140.0, "step": 260.0},
 	]
-	for s in spots:
-		var tower := ColorRect.new()
-		tower.z_index = -8
-		tower.offset_left = s.x
-		tower.offset_top = s.y
-		tower.offset_right = s.x + 40.0
-		tower.offset_bottom = 620.0
-		tower.color = COL_MID_TOWER
-		parent.add_child(tower)
+	for layer in bases:
+		var x: float = -40.0
+		while x < 1320.0:
+			var hill := Polygon2D.new()
+			hill.z_index = -9
+			hill.color = layer["col"]
+			var h: float = float(layer["h"]) + sin(x * 0.012) * 35.0
+			var w: float = float(layer["step"])
+			var base_y: float = float(layer["y"])
+			hill.polygon = PackedVector2Array([
+				Vector2(x,              base_y),
+				Vector2(x + w * 0.25,   base_y - h * 0.55),
+				Vector2(x + w * 0.5,    base_y - h),
+				Vector2(x + w * 0.75,   base_y - h * 0.50),
+				Vector2(x + w,          base_y),
+			])
+			parent.add_child(hill)
+			x += w * 0.78
 
-		# blinking-light dot near the top
-		var light := ColorRect.new()
-		light.z_index = -8
-		light.offset_left = s.x + 16.0
-		light.offset_top = s.y + 4.0
-		light.offset_right = s.x + 24.0
-		light.offset_bottom = s.y + 12.0
-		light.color = Color(0.85, 0.35, 0.30, 0.85)
-		parent.add_child(light)
+func _paint_mid_canopy(parent: Node) -> void:
+	# Row of overlapping blob-shaped tree silhouettes with thin trunks below.
+	var x: float = 0.0
+	var i: int = 0
+	while x < 1280.0:
+		var cy: float = 470.0 + sin(float(i) * 0.9) * 35.0
+		var rx: float = 70.0 + float(i % 3) * 12.0
+		var ry: float = 80.0 + float(i % 2) * 14.0
+		_blob_polygon(parent, x + rx, cy, rx, ry, COL_MID_CANOPY, -8)
+		# Highlight on the sunward side
+		_blob_polygon(parent, x + rx - 8.0, cy - 8.0, rx * 0.55, ry * 0.55,
+			COL_MID_CANOPY.lightened(0.10), -8)
+		# Trunk
+		var trunk := ColorRect.new()
+		trunk.z_index = -8
+		trunk.offset_left  = x + rx - 5.0
+		trunk.offset_right = x + rx + 5.0
+		trunk.offset_top   = cy + ry * 0.35
+		trunk.offset_bottom = 640.0
+		trunk.color = COL_MID_TRUNK
+		parent.add_child(trunk)
+		x += rx * 1.55
+		i += 1
 
-func _paint_near_pillars() -> void:
-	var pillar_x: float = 160.0
-	while pillar_x < LEVEL_RIGHT - 60.0:
-		var p := ColorRect.new()
-		p.z_index = -1
-		p.offset_left = pillar_x
-		p.offset_top = LEVEL_TOP - 50.0
-		p.offset_right = pillar_x + 8.0
-		p.offset_bottom = GROUND_BOTTOM
-		p.color = COL_NEAR_PROP
-		add_child(p)
-		# cable hanging from the ceiling pillar
-		if int(pillar_x) % 800 < 400:
-			var cable := ColorRect.new()
-			cable.z_index = -1
-			cable.offset_left = pillar_x + 2.0
-			cable.offset_top = CEILING_BOT
-			cable.offset_right = pillar_x + 4.0
-			cable.offset_bottom = CEILING_BOT + randf_range(40.0, 100.0)
-			cable.color = COL_CABLE
-			add_child(cable)
-		pillar_x += 380.0
+func _blob_polygon(parent: Node, cx: float, cy: float, rx: float, ry: float, c: Color, z: int) -> void:
+	var n := 14
+	var pts := PackedVector2Array()
+	for k in n:
+		var a: float = float(k) * TAU / float(n)
+		var jitter: float = 0.85 + 0.25 * sin(float(k) * 1.7 + cx * 0.013)
+		pts.append(Vector2(cx + cos(a) * rx * jitter, cy + sin(a) * ry * jitter))
+	var poly := Polygon2D.new()
+	poly.z_index = z
+	poly.color = c
+	poly.polygon = pts
+	parent.add_child(poly)
+
+func _paint_near_trees() -> void:
+	# Foreground palm trees (between the player and the far layers), plus
+	# the occasional liana hanging from the ceiling.
+	var x: float = 200.0
+	var i: int = 0
+	while x < LEVEL_RIGHT - 80.0:
+		var height: float = 130.0 + float(i % 3) * 18.0
+		_draw_palm_tree(x, height, i)
+		if i % 2 == 0:
+			_draw_liana(x + 160.0)
+		x += 380.0
+		i += 1
+
+func _draw_palm_tree(x: float, height: float, seed_i: int) -> void:
+	var base_y: float = GROUND_TOP - 2.0
+	var top_y: float = base_y - height
+	var lean: float = sin(float(seed_i) * 1.3) * 6.0
+
+	# Trunk — slight S-curve via two stacked quads
+	var trunk := Polygon2D.new()
+	trunk.z_index = -1
+	trunk.color = COL_TRUNK
+	trunk.polygon = PackedVector2Array([
+		Vector2(x - 6.0,             base_y),
+		Vector2(x + 6.0,             base_y),
+		Vector2(x + 4.0 + lean * 0.3, base_y - height * 0.55),
+		Vector2(x + 3.0 + lean,       top_y),
+		Vector2(x - 3.0 + lean,       top_y),
+		Vector2(x - 4.0 + lean * 0.3, base_y - height * 0.55),
+	])
+	add_child(trunk)
+
+	# Trunk ring highlights (a few horizontal stripes for bark texture)
+	for k in 3:
+		var ry: float = base_y - height * (0.25 + 0.22 * float(k))
+		var ring := ColorRect.new()
+		ring.z_index = -1
+		ring.offset_left  = x - 5.0 + lean * (ry - base_y) / -height * 0.6
+		ring.offset_right = x + 5.0 + lean * (ry - base_y) / -height * 0.6
+		ring.offset_top   = ry
+		ring.offset_bottom = ry + 2.0
+		ring.color = COL_TRUNK_HI
+		add_child(ring)
+
+	# Fronds — 7 elongated diamond shapes fanning out around the top
+	var frond_count := 7
+	for k in frond_count:
+		var t: float = float(k) / float(frond_count - 1)
+		var ang: float = lerpf(PI * 1.15, TAU - PI * 0.15, t)
+		var flen: float = 58.0 + sin(float(k + seed_i) * 1.7) * 8.0
+		var fwid: float = 8.0
+		var ex: float = x + lean + cos(ang) * flen
+		var ey: float = top_y + sin(ang) * flen * 0.55
+		var mid_x: float = x + lean + cos(ang) * flen * 0.5
+		var mid_y: float = top_y + sin(ang) * flen * 0.27
+		# Perpendicular offset for the diamond's width
+		var perp := Vector2(-sin(ang), cos(ang)) * fwid
+		var frond := Polygon2D.new()
+		frond.z_index = -1
+		frond.color = COL_FROND if (k + seed_i) % 2 == 0 else COL_FROND_HI
+		frond.polygon = PackedVector2Array([
+			Vector2(x + lean, top_y),
+			Vector2(mid_x + perp.x, mid_y + perp.y),
+			Vector2(ex, ey),
+			Vector2(mid_x - perp.x, mid_y - perp.y),
+		])
+		add_child(frond)
+
+	# A coconut cluster
+	for k in 3:
+		var co := ColorRect.new()
+		co.z_index = -1
+		co.offset_left  = x + lean - 6.0 + float(k) * 5.0
+		co.offset_right = x + lean - 2.0 + float(k) * 5.0
+		co.offset_top   = top_y + 2.0
+		co.offset_bottom = top_y + 6.0
+		co.color = COL_TRUNK
+		add_child(co)
+
+func _draw_liana(x: float) -> void:
+	var length: float = randf_range(60.0, 140.0)
+	var vine := ColorRect.new()
+	vine.z_index = -1
+	vine.offset_left  = x
+	vine.offset_right = x + 3.0
+	vine.offset_top   = CEILING_BOT
+	vine.offset_bottom = CEILING_BOT + length
+	vine.color = COL_CABLE
+	add_child(vine)
+	# A small leaf cluster at the tip
+	var leaf := Polygon2D.new()
+	leaf.z_index = -1
+	leaf.color = COL_FROND
+	var ty: float = CEILING_BOT + length
+	leaf.polygon = PackedVector2Array([
+		Vector2(x + 1.5,  ty),
+		Vector2(x + 10.0, ty + 4.0),
+		Vector2(x + 6.0,  ty + 14.0),
+		Vector2(x - 6.0,  ty + 12.0),
+		Vector2(x - 10.0, ty + 3.0),
+	])
+	add_child(leaf)
 
 # -----------------------------------------------------------------------------
 # World container + primitive add helpers
@@ -224,11 +344,67 @@ func _add_platform(x: float, y: float, w: float) -> void:
 
 func _add_ground(x_start: float, x_end: float) -> void:
 	_add_solid(x_start, GROUND_TOP, x_end - x_start, GROUND_BOTTOM - GROUND_TOP, COL_GROUND, 3.0, COL_GRASS)
-	# Sprinkle a few grass tufts on top for texture
-	var x: float = x_start + 24.0
-	while x < x_end - 24.0:
-		_add_grass_tuft(x)
-		x += randf_range(56.0, 120.0)
+	# Darker dirt band below the grass for soil layering
+	_paint_dirt_band(x_start, x_end, GROUND_TOP + 8.0, GROUND_TOP + 22.0)
+	# Sprinkle grass tufts on top
+	var gx: float = x_start + 24.0
+	while gx < x_end - 24.0:
+		_add_grass_tuft(gx)
+		gx += randf_range(48.0, 110.0)
+	# Scatter rocky outcrops (non-uniform spacing for organic feel)
+	var rx: float = x_start + randf_range(60.0, 140.0)
+	while rx < x_end - 80.0:
+		_add_ground_rock(rx)
+		rx += randf_range(180.0, 320.0)
+
+func _paint_dirt_band(x_start: float, x_end: float, y_top: float, y_bot: float) -> void:
+	var band := ColorRect.new()
+	band.z_index = 0
+	band.offset_left = x_start
+	band.offset_right = x_end
+	band.offset_top = y_top
+	band.offset_bottom = y_bot
+	band.color = COL_GROUND_DARK
+	add_child(band)
+
+func _add_ground_rock(x: float) -> void:
+	# Mossy outcrop (visual only — does not block movement). Sits on the
+	# grass surface; the mossy cap matches the grass color.
+	var base_y: float = GROUND_TOP
+	var w: float = randf_range(18.0, 34.0)
+	var h: float = randf_range(8.0, 18.0)
+	var body := Polygon2D.new()
+	body.z_index = 0
+	body.color = COL_ROCK
+	body.polygon = PackedVector2Array([
+		Vector2(x - w * 0.5,  base_y),
+		Vector2(x - w * 0.4,  base_y - h * 0.85),
+		Vector2(x - w * 0.1,  base_y - h),
+		Vector2(x + w * 0.25, base_y - h * 0.95),
+		Vector2(x + w * 0.5,  base_y - h * 0.5),
+		Vector2(x + w * 0.45, base_y),
+	])
+	add_child(body)
+	# Mossy cap
+	var cap := Polygon2D.new()
+	cap.z_index = 0
+	cap.color = COL_ROCK_TOP
+	cap.polygon = PackedVector2Array([
+		Vector2(x - w * 0.35, base_y - h * 0.75),
+		Vector2(x - w * 0.1,  base_y - h),
+		Vector2(x + w * 0.25, base_y - h * 0.95),
+		Vector2(x + w * 0.35, base_y - h * 0.7),
+	])
+	add_child(cap)
+	# Shadow seam at the base
+	var seam := ColorRect.new()
+	seam.z_index = 0
+	seam.offset_left = x - w * 0.5
+	seam.offset_right = x + w * 0.5
+	seam.offset_top = base_y - 1.0
+	seam.offset_bottom = base_y + 1.5
+	seam.color = COL_ROCK_EDGE
+	add_child(seam)
 
 func _add_grass_tuft(x: float) -> void:
 	var t := ColorRect.new()
@@ -354,14 +530,14 @@ func _add_fire_pulse(x: float, y: float, period: float = 6.0, phase: float = 0.0
 	vent.offset_top = 4.0
 	vent.offset_right = 14.0
 	vent.offset_bottom = 10.0
-	vent.color = COL_PIPE
+	vent.color = COL_ROCK_EDGE
 	node.add_child(vent)
 	var rim := ColorRect.new()
 	rim.offset_left = -14.0
 	rim.offset_top = 4.0
 	rim.offset_right = 14.0
 	rim.offset_bottom = 6.0
-	rim.color = COL_PIPE_HI
+	rim.color = COL_ROCK
 	node.add_child(rim)
 
 	var timer := Timer.new()
@@ -417,7 +593,7 @@ func _add_elec_pulse(x: float, y: float, period: float = 1.9, phase: float = 0.0
 	emitter.offset_top = -36.0
 	emitter.offset_right = 8.0
 	emitter.offset_bottom = -28.0
-	emitter.color = COL_PIPE
+	emitter.color = COL_TRUNK
 	node.add_child(emitter)
 
 	var timer := Timer.new()
@@ -444,19 +620,19 @@ func _add_elec_pulse(x: float, y: float, period: float = 1.9, phase: float = 0.0
 # -----------------------------------------------------------------------------
 # Decorative prop helpers (visual only, no collision)
 # -----------------------------------------------------------------------------
-func _add_crate(x: float, y: float, size: float = 22.0) -> void:
+func _add_rock(x: float, y: float, size: float = 22.0) -> void:
 	# Solid crate the player can stand on — adds traversal options + visual juice.
-	_add_solid(x, y, size, size, COL_CRATE, 2.0, COL_CRATE_EDGE)
+	_add_solid(x, y, size, size, COL_ROCK, 2.0, COL_ROCK_EDGE)
 	# corner highlight
 	var hi := ColorRect.new()
 	hi.offset_left = x + size - 4.0
 	hi.offset_top = y + 2.0
 	hi.offset_right = x + size - 2.0
 	hi.offset_bottom = y + size - 2.0
-	hi.color = COL_CRATE_EDGE
+	hi.color = COL_ROCK_EDGE
 	_world.add_child(hi)
 
-func _add_pipe_h(x: float, y: float, w: float) -> void:
+func _add_branch_h(x: float, y: float, w: float) -> void:
 	# Horizontal background pipe (no collision)
 	var pipe := ColorRect.new()
 	pipe.z_index = -1
@@ -464,7 +640,7 @@ func _add_pipe_h(x: float, y: float, w: float) -> void:
 	pipe.offset_top = y
 	pipe.offset_right = x + w
 	pipe.offset_bottom = y + 8.0
-	pipe.color = COL_PIPE
+	pipe.color = COL_VINE
 	add_child(pipe)
 	var hi := ColorRect.new()
 	hi.z_index = -1
@@ -472,17 +648,17 @@ func _add_pipe_h(x: float, y: float, w: float) -> void:
 	hi.offset_top = y
 	hi.offset_right = x + w
 	hi.offset_bottom = y + 2.0
-	hi.color = COL_PIPE_HI
+	hi.color = COL_VINE_HI
 	add_child(hi)
 
-func _add_pipe_v(x: float, y_top: float, y_bot: float) -> void:
+func _add_branch_v(x: float, y_top: float, y_bot: float) -> void:
 	var pipe := ColorRect.new()
 	pipe.z_index = -1
 	pipe.offset_left = x
 	pipe.offset_top = y_top
 	pipe.offset_right = x + 8.0
 	pipe.offset_bottom = y_bot
-	pipe.color = COL_PIPE
+	pipe.color = COL_VINE
 	add_child(pipe)
 	var hi := ColorRect.new()
 	hi.z_index = -1
@@ -490,7 +666,7 @@ func _add_pipe_v(x: float, y_top: float, y_bot: float) -> void:
 	hi.offset_top = y_top
 	hi.offset_right = x + 2.0
 	hi.offset_bottom = y_bot
-	hi.color = COL_PIPE_HI
+	hi.color = COL_VINE_HI
 	add_child(hi)
 
 func _add_sign(x: float, y: float, glyph_color: Color = COL_SIGN_FG) -> void:
@@ -609,8 +785,8 @@ func _build_section_a_start() -> void:
 	_add_ground(0.0, 700.0)
 
 	# Background props that introduce the industrial feel
-	_add_pipe_h(40.0, 120.0, 220.0)
-	_add_pipe_v(254.0, 120.0, 396.0)
+	_add_branch_h(40.0, 120.0, 220.0)
+	_add_branch_v(254.0, 120.0, 396.0)
 	_add_sign(60.0, 380.0)
 
 	# Tutorial coin trail leading the eye to the right
@@ -634,9 +810,9 @@ func _build_section_a_start() -> void:
 	_add_grenade_pickup(378.0, 218.0, 0)
 
 	# Small crate stack on the right to teach "things can be platforms"
-	_add_crate(620.0, 378.0)
-	_add_crate(620.0, 356.0)
-	_add_crate(642.0, 378.0)
+	_add_rock(620.0, 378.0)
+	_add_rock(620.0, 356.0)
+	_add_rock(642.0, 378.0)
 	_add_coin(631.0, 332.0)
 
 	# One patrol enemy
@@ -651,7 +827,7 @@ func _build_section_b_first_pit() -> void:
 	_add_pit_depth(720.0, 1380.0)
 
 	# Background pipes spanning the gap (visual continuity)
-	_add_pipe_h(700.0, 100.0, 700.0)
+	_add_branch_h(700.0, 100.0, 700.0)
 
 	# Two moving platforms over the pit
 	_add_moving_platform(780.0, 380.0, 120.0)
@@ -684,8 +860,8 @@ func _build_section_c_break_climb() -> void:
 	_add_ground(1400.0, 2100.0)
 
 	# Background scaffolding
-	_add_pipe_v(1418.0, 80.0, 400.0)
-	_add_pipe_h(1418.0, 80.0, 660.0)
+	_add_branch_v(1418.0, 80.0, 400.0)
+	_add_branch_h(1418.0, 80.0, 660.0)
 
 	# Break-platform staircase up
 	_add_break_platform(1430.0, 320.0, 80.0)
@@ -750,11 +926,11 @@ func _build_section_d_spike_corridor() -> void:
 	_add_grenade_pickup(2440.0, 372.0, 0)
 
 	# Crate stack at the end of the corridor
-	_add_crate(2820.0, 378.0)
-	_add_crate(2820.0, 356.0)
+	_add_rock(2820.0, 378.0)
+	_add_rock(2820.0, 356.0)
 
 	# Overhead pipes for visual cohesion
-	_add_pipe_h(2120.0, 80.0, 760.0)
+	_add_branch_h(2120.0, 80.0, 760.0)
 
 	_add_soldier(2450.0, 375.0, 60.0)
 	_add_soldier(2780.0, 375.0)
@@ -767,9 +943,9 @@ func _build_section_e_vertical_climb() -> void:
 	_add_ground(2900.0, 3500.0)
 
 	# Background scaffolding columns to sell the verticality
-	_add_pipe_v(2950.0, 60.0, 400.0)
-	_add_pipe_v(3300.0, 60.0, 400.0)
-	_add_pipe_h(2950.0, 60.0, 358.0)
+	_add_branch_v(2950.0, 60.0, 400.0)
+	_add_branch_v(3300.0, 60.0, 400.0)
+	_add_branch_h(2950.0, 60.0, 358.0)
 
 	# Climb itself
 	_add_break_platform(2970.0, 320.0, 80.0)
@@ -848,7 +1024,7 @@ func _build_section_f_big_pit_gauntlet() -> void:
 	_add_coin_arc(3960.0, 220.0, 5, 100.0)
 
 	# Hanging cable + pipe over the pit
-	_add_pipe_h(3520.0, 60.0, 960.0)
+	_add_branch_h(3520.0, 60.0, 960.0)
 
 # -----------------------------------------------------------------------------
 # Section G — Mixed challenge (4500..5200): mixed platforms, enemies,
@@ -885,12 +1061,12 @@ func _build_section_g_mixed_challenge() -> void:
 	_add_grenade_pickup(4770.0, 148.0, 1)
 
 	# Background props
-	_add_pipe_h(4500.0, 80.0, 700.0)
-	_add_pipe_v(4860.0, 80.0, 200.0)
+	_add_branch_h(4500.0, 80.0, 700.0)
+	_add_branch_v(4860.0, 80.0, 200.0)
 
 	# Stacked crates as cover near the door
-	_add_crate(5095.0, 378.0)
-	_add_crate(5095.0, 356.0)
+	_add_rock(5095.0, 378.0)
+	_add_rock(5095.0, 356.0)
 
 	_add_soldier(4560.0, 375.0)
 	_add_soldier(4880.0, 375.0, 60.0)
@@ -921,8 +1097,8 @@ func _build_section_h_final_stretch() -> void:
 	_add_coin(5860.0, 374.0)
 
 	# Background pipes lit toward exit
-	_add_pipe_h(5200.0, 80.0, 800.0)
-	_add_pipe_v(5800.0, 80.0, 400.0)
+	_add_branch_h(5200.0, 80.0, 800.0)
+	_add_branch_v(5800.0, 80.0, 400.0)
 
 	# Arrow signs pointing toward the exit
 	_add_arrow_sign(5320.0, 378.0)
