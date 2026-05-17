@@ -2,8 +2,8 @@ extends Node
 
 var is_run_active: bool = false
 var depth: int = 0
-var saved_health: int = 5
-var saved_max_health: int = 5
+var saved_health: int = 10
+var saved_max_health: int = 10
 var saved_score: int = 0
 var saved_grenade_type: int = 0
 var saved_grenade_count: int = 3
@@ -15,8 +15,8 @@ var invincibility_bonus: float = 0.0
 func start_new_run() -> void:
 	is_run_active = true
 	depth = 0
-	saved_health = 5
-	saved_max_health = 5
+	saved_health = 10
+	saved_max_health = 10
 	saved_score = 0
 	saved_grenade_type = 0
 	saved_grenade_count = 3

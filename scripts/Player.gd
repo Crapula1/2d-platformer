@@ -27,7 +27,7 @@ class_name Player
 @export var jetpack_max_up: float = -340.0   # clamp so it doesn't accelerate forever
 
 # Combat
-@export var max_health: int = 5
+@export var max_health: int = 10
 @export var attack_damage: int = 2
 @export var attack_duration: float = 0.22
 @export var invincibility_time: float = 1.0
@@ -354,9 +354,22 @@ func _handle_grenade_input() -> void:
 func _throw_grenade() -> void:
 	var g := GRENADE_SCENE.instantiate() as Grenade
 	get_parent().add_child(g)
-	g.global_position = global_position + Vector2(0, -10)
-	var dir: float = 1.0 if facing_right else -1.0
-	g.setup(Grenade.Type.values()[grenade_type], Vector2(dir * throw_force, -throw_force * 0.65))
+	var spawn_pos: Vector2 = global_position + Vector2(0, -10)
+	g.global_position = spawn_pos
+
+	# Aim from the spawn point toward the mouse cursor. Apply a slight upward
+	# loft so close-range throws still arc, and clamp the angle so straight-down
+	# throws don't slam the grenade into the floor instantly.
+	var aim: Vector2 = get_global_mouse_position() - spawn_pos
+	if aim.length_squared() < 1.0:
+		aim = Vector2(1.0 if facing_right else -1.0, -0.55)
+	var dir: Vector2 = aim.normalized()
+	# Loft: add a touch of upward bias for shorter horizontal throws
+	dir.y -= 0.18
+	dir = dir.normalized()
+	# Update facing so the player turns to match the throw
+	facing_right = dir.x >= 0.0
+	g.setup(Grenade.Type.values()[grenade_type], dir * throw_force)
 
 func add_grenade(type: int) -> bool:
 	if grenade_count >= GRENADE_MAX:
@@ -424,7 +437,10 @@ func apply_powerup(type: String, duration: float, magnitude: float = 1.0) -> voi
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_invincible or is_dead:
 		return
-	current_health -= amount
+	# All incoming attacks deal 1 damage. The kill-plane in Main.gd still
+	# passes 99 to force-kill the player; preserve that as a special case.
+	var dmg: int = 99 if amount >= 99 else 1
+	current_health -= dmg
 	is_invincible = true
 	invincibility_timer = invincibility_time
 	if is_sliding:

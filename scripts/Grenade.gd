@@ -29,7 +29,7 @@ const FIRE_ZONE_SCENE  = preload("res://scenes/FireZone.tscn")
 const ELECTRIC_SCENE   = preload("res://scenes/ElectricZone.tscn")
 
 var grenade_type: Type = Type.EXPLOSIVE
-var fuse_time: float = 2.4
+var fuse_time: float = 1.1
 var _fuse: float = 0.0
 var _detonated: bool = false
 

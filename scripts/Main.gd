@@ -1,6 +1,22 @@
 extends Node2D
 
-@onready var health_label: Label = $HUD/MarginContainer/VBoxContainer/HealthLabel
+@onready var health_bar: Control = $HUD/MarginContainer/VBoxContainer/HealthBar
+@onready var health_fill: ColorRect = $HUD/MarginContainer/VBoxContainer/HealthBar/Fill
+@onready var health_damage_lag: ColorRect = $HUD/MarginContainer/VBoxContainer/HealthBar/DamageLag
+@onready var health_label: Label = $HUD/MarginContainer/VBoxContainer/HealthBar/HealthLabel
+@onready var jetpack_fill: ColorRect = $HUD/MarginContainer/VBoxContainer/JetpackBar/Fill
+@onready var jetpack_label: Label = $HUD/MarginContainer/VBoxContainer/JetpackBar/FuelLabel
+
+const HEALTH_BAR_INNER_W: float = 188.0
+const JETPACK_BAR_INNER_W: float = 188.0
+const JETPACK_COL_FULL := Color(1.0, 0.78, 0.15)
+const JETPACK_COL_LOW  := Color(1.0, 0.42, 0.10)
+const HEALTH_COL_HIGH := Color(0.30, 0.85, 0.35)
+const HEALTH_COL_MID  := Color(0.95, 0.78, 0.20)
+const HEALTH_COL_LOW  := Color(0.95, 0.30, 0.20)
+
+var _health_fill_tween: Tween = null
+var _health_lag_tween: Tween = null
 @onready var score_label: Label = $HUD/MarginContainer/VBoxContainer/ScoreLabel
 @onready var grenade_label: Label = $HUD/MarginContainer/VBoxContainer/GrenadeLabel
 @onready var message_label: Label = $HUD/CenterContainer/MessageLabel
@@ -9,7 +25,12 @@ extends Node2D
 const LEVEL_SCENE := preload("res://scenes/Level.tscn")
 const PROC_LEVEL_SCENE := preload("res://scenes/ProceduralLevel.tscn")
 const PAUSE_MENU_SCENE := preload("res://scenes/PauseMenu.tscn")
+const COIN_SCENE := preload("res://scenes/Coin.tscn")
 const DEATH_PLANE_MARGIN: float = 160.0
+
+# Konami code easter egg: ↑↑↓↓←→←→ → coin shower
+const KONAMI := [KEY_UP, KEY_UP, KEY_DOWN, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_LEFT, KEY_RIGHT]
+var _konami_progress: int = 0
 
 const UPGRADES := [
 	{"id": "max_hp",      "name": "Combat Stims",  "desc": "+2 Max HP"},
@@ -58,6 +79,8 @@ func _ready() -> void:
 	player.score_changed.connect(_on_score_changed)
 	player.died.connect(_on_player_died)
 	player.grenade_changed.connect(_on_grenade_changed)
+	player.jetpack_changed.connect(_on_jetpack_changed)
+	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
 
 	for goal in get_tree().get_nodes_in_group("goal"):
 		goal.reached.connect(_on_level_exit)
@@ -86,13 +109,48 @@ func _process(_delta: float) -> void:
 		player.take_damage(99, player.global_position)
 
 func _on_health_changed(new_health: int, max_health: int) -> void:
-	var hearts := ""
-	for i in range(max_health):
-		hearts += "♥" if i < new_health else "♡"
-	health_label.text = "HP: " + hearts
+	var pct: float = 0.0 if max_health <= 0 else clampf(float(new_health) / float(max_health), 0.0, 1.0)
+	var target_w: float = HEALTH_BAR_INNER_W * pct
+	health_label.text = "HP %d / %d" % [maxi(new_health, 0), max_health]
+
+	# Color shifts: green > yellow > red as health drops
+	var target_color: Color
+	if pct > 0.55:
+		target_color = HEALTH_COL_HIGH.lerp(HEALTH_COL_MID, (1.0 - pct) / 0.45)
+	else:
+		target_color = HEALTH_COL_MID.lerp(HEALTH_COL_LOW, clampf((0.55 - pct) / 0.55, 0.0, 1.0))
+
+	# Fast fill tween — snappy on heal/damage
+	if _health_fill_tween != null and _health_fill_tween.is_valid():
+		_health_fill_tween.kill()
+	_health_fill_tween = create_tween().set_parallel(true)
+	_health_fill_tween.tween_property(health_fill, "offset_right", 2.0 + target_w, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_health_fill_tween.tween_property(health_fill, "color", target_color, 0.15)
+
+	# Slow damage-lag bar — yellow trail that catches up after a beat (only on damage)
+	var lag_right: float = health_damage_lag.offset_right
+	var fill_right: float = 2.0 + target_w
+	if lag_right > fill_right:
+		# Damage taken — pause briefly, then catch up
+		if _health_lag_tween != null and _health_lag_tween.is_valid():
+			_health_lag_tween.kill()
+		_health_lag_tween = create_tween()
+		_health_lag_tween.tween_interval(0.25)
+		_health_lag_tween.tween_property(health_damage_lag, "offset_right", fill_right, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	else:
+		# Heal — snap up with the fill
+		if _health_lag_tween != null and _health_lag_tween.is_valid():
+			_health_lag_tween.kill()
+		health_damage_lag.offset_right = fill_right
 
 func _on_score_changed(new_score: int) -> void:
 	score_label.text = "Coins: " + str(new_score)
+
+func _on_jetpack_changed(fuel: float, max_fuel: float) -> void:
+	var pct: float = 0.0 if max_fuel <= 0.0 else clampf(fuel / max_fuel, 0.0, 1.0)
+	jetpack_fill.offset_right = 2.0 + JETPACK_BAR_INNER_W * pct
+	jetpack_fill.color = JETPACK_COL_LOW.lerp(JETPACK_COL_FULL, pct)
+	jetpack_label.text = "FUEL %d%%" % int(round(pct * 100.0))
 
 func _on_grenade_changed(type_name: String, count: int) -> void:
 	grenade_label.text = "[ " + type_name + "  x" + str(count) + " ]"
@@ -206,6 +264,45 @@ func _fade_and_load() -> void:
 func _open_pause_menu() -> void:
 	_pause_menu = PAUSE_MENU_SCENE.instantiate()
 	add_child(_pause_menu)
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KONAMI[_konami_progress]:
+			_konami_progress += 1
+			if _konami_progress >= KONAMI.size():
+				_konami_progress = 0
+				_trigger_coin_shower()
+		else:
+			# Resync — current key might be the first of a new attempt
+			_konami_progress = 1 if event.keycode == KONAMI[0] else 0
+
+func _trigger_coin_shower() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	message_label.text = "★ JUNGLE BOUNTY ★"
+	message_label.modulate = Color(1.0, 0.9, 0.3)
+	get_tree().create_timer(1.6).timeout.connect(func() -> void:
+		if is_instance_valid(message_label):
+			message_label.text = ""
+			message_label.modulate = Color.WHITE
+	)
+	var origin: Vector2 = player.global_position
+	for i in 18:
+		var coin := COIN_SCENE.instantiate() as Node2D
+		_level.add_child(coin)
+		var spread: float = randf_range(-200.0, 200.0)
+		var sky: Vector2 = origin + Vector2(spread, -240.0 - randf_range(0.0, 80.0))
+		var ground: Vector2 = origin + Vector2(spread, -8.0)
+		coin.global_position = sky
+		# Fall to ground level — set start_y after the tween finishes so the
+		# bob animation in Coin._process kicks in from the right baseline.
+		var tw := coin.create_tween()
+		tw.tween_property(coin, "global_position", ground, randf_range(0.55, 0.85)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_callback(func() -> void:
+			if is_instance_valid(coin):
+				coin.start_y = coin.position.y
+				coin.time = 0.0
+		)
 
 func _make_stylebox(color: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()

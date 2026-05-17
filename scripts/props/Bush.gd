@@ -12,6 +12,7 @@ extends Node2D
 @export var color_hi: Color    = Color(0.28, 0.58, 0.22)
 
 func _ready() -> void:
+	add_to_group("bush")
 	_build()
 
 func _build() -> void:
