@@ -33,6 +33,18 @@ class_name Player
 @export var invincibility_time: float = 1.0
 @export var knockback_force: float = 300.0
 
+# 3-hit melee combo: Cleave → Smash → Stab. Repeated attack presses chain
+# within combo_window. Each stage has its own duration, damage multiplier,
+# and axe animation. The axe itself is only visible during an active swing.
+@export var combo_window: float = 0.32
+const ATTACK_STAGE_NAMES := ["IDLE", "CLEAVE", "SMASH", "STAB"]
+var attack_stage: int = 0
+var _combo_window_timer: float = 0.0
+var _attack_buffered: bool = false
+var _axe: Node2D
+var _axe_pivot: Node2D
+var _axe_base_rotation: float = 0.0
+
 # Slide
 @export var slide_speed: float = 270.0
 @export var slide_duration: float = 0.38
@@ -42,10 +54,29 @@ class_name Player
 # Sprint
 @export var sprint_multiplier: float = 1.65
 
-# Shooting
+# Shooting — rifle
 @export var bullet_speed: float = 500.0
+@export var bullet_range: float = 640.0
 @export var shoot_cooldown: float = 0.18
 @export var bullet_damage: int = 1
+
+# Shooting — double-barrel shotgun (spread, double damage per pellet)
+@export var shotgun_pellet_count: int = 5
+@export var shotgun_spread: float = 0.32           # half-cone in radians (~18°)
+@export var shotgun_pellet_speed: float = 480.0
+@export var shotgun_pellet_range: float = 320.0
+@export var shotgun_capacity: int = 2              # double-barrel
+@export var shotgun_barrel_interval: float = 0.18  # fast follow-up between barrels
+@export var shotgun_reload_time: float = 0.85      # crack-and-reload after both barrels
+@export var shotgun_damage_mult: int = 2
+
+enum Weapon { RIFLE, SHOTGUN }
+const WEAPON_NAMES := ["RIFLE", "SHOTGUN"]
+var weapon: int = Weapon.RIFLE
+var _shotgun_shells: int = 0
+
+signal weapon_changed(name: String)
+signal shotgun_shells_changed(shells: int, max_shells: int)
 
 # Wall run
 @export var wall_slide_gravity_scale: float = 0.08
@@ -121,6 +152,9 @@ func _ready() -> void:
 	score_changed.emit(score)
 	grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
 	jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
+	_shotgun_shells = shotgun_capacity
+	weapon_changed.emit(WEAPON_NAMES[weapon])
+	shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
 	_cam = get_node_or_null("Camera2D") as Camera2D
 	_jet_flame = Polygon2D.new()
 	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
@@ -131,6 +165,7 @@ func _ready() -> void:
 	_jet_flame.z_index = -1
 	_jet_flame.visible = false
 	add_child(_jet_flame)
+	_build_axe()
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
@@ -185,6 +220,10 @@ func _update_timers(delta: float) -> void:
 		attack_timer -= delta
 		if attack_timer <= 0:
 			_end_attack()
+	if _combo_window_timer > 0.0:
+		_combo_window_timer -= delta
+		if _combo_window_timer <= 0.0:
+			attack_stage = 0
 	if is_invincible:
 		invincibility_timer -= delta
 		if invincibility_timer <= 0:
@@ -380,33 +419,178 @@ func add_grenade(type: int) -> bool:
 	return true
 
 func _handle_attack_input() -> void:
-	if Input.is_action_just_pressed("attack") and not is_attacking:
-		_start_attack()
+	if not Input.is_action_just_pressed("attack") or is_dead:
+		return
+	if is_attacking:
+		# Queue the next combo step; it'll fire as soon as the current swing ends.
+		_attack_buffered = true
+		return
+	# Not currently attacking — choose the next stage based on combo window.
+	var next_stage: int = 1
+	if _combo_window_timer > 0.0 and attack_stage > 0 and attack_stage < 3:
+		next_stage = attack_stage + 1
+	_start_attack(next_stage)
 
-func _start_attack() -> void:
+func _start_attack(stage: int) -> void:
 	_slide_bash = is_sliding
 	if is_sliding:
 		_end_slide()
+	attack_stage = stage
 	is_attacking = true
-	attack_timer = attack_duration
+	var cfg: Dictionary = _stage_config(stage)
+	attack_timer = float(cfg["duration"])
 	attack_shape.disabled = false
-	attack_area.position.x = 20 if facing_right else -20
-	var tint := Color(1.0, 0.38, 0.08) if _slide_bash else Color(1.0, 0.85, 0.2)
+	# Stab has longer reach; cleave/smash use the normal swing range.
+	var reach: float = 28.0 if stage == 3 else 20.0
+	attack_area.position.x = reach if facing_right else -reach
+	# Slide-bash and stage-specific tint
+	var tint: Color = cfg["tint"]
+	if _slide_bash:
+		tint = Color(1.0, 0.38, 0.08)
 	tint.a = sprite.modulate.a
 	sprite.modulate = tint
+	# Show + reset the axe at this stage's starting pose.
+	_axe.visible = true
+	_axe_pivot.rotation = float(cfg["rot_start"])
+	_axe_pivot.position = Vector2(float(cfg["thrust_start"]), -4.0)
 
 func _end_attack() -> void:
 	is_attacking = false
 	_slide_bash = false
 	attack_shape.disabled = true
 	sprite.modulate = _get_base_modulate()
+	# Chain into the next stage if buffered and we haven't reached the finisher
+	if _attack_buffered and attack_stage < 3:
+		_attack_buffered = false
+		_start_attack(attack_stage + 1)
+		return
+	# End of swing — start (or refresh) the combo window. If the player
+	# pulls the trigger again within it, they continue the combo.
+	_attack_buffered = false
+	_combo_window_timer = combo_window
+	# Hide the axe between swings
+	_axe.visible = false
 
 func _on_attack_hit(body: Node) -> void:
 	if body.has_method("take_damage"):
-		var dmg: int = int(attack_damage * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+		var cfg: Dictionary = _stage_config(attack_stage)
+		var mult: float = float(cfg.get("damage_mult", 1.0))
+		var dmg: int = int(attack_damage * mult * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
 		if _slide_bash:
 			dmg = int(dmg * 1.6)
 		body.take_damage(dmg, global_position)
+
+func _stage_config(stage: int) -> Dictionary:
+	# Per-attack tuning. Rotations are radians; thrust is local x offset of
+	# the axe pivot point (used by Stab to lunge forward).
+	match stage:
+		1:  # CLEAVE — wide horizontal arc, medium damage
+			return {
+				"duration": 0.22,
+				"damage_mult": 1.0,
+				"rot_start": -1.9,
+				"rot_end":    0.6,
+				"thrust_start": 0.0,
+				"thrust_end":   0.0,
+				"tint": Color(1.0, 0.85, 0.2),
+			}
+		2:  # SMASH — overhead vertical chop, big damage, heavier
+			return {
+				"duration": 0.32,
+				"damage_mult": 1.6,
+				"rot_start": -2.6,
+				"rot_end":    1.3,
+				"thrust_start": 0.0,
+				"thrust_end":   2.0,
+				"tint": Color(1.0, 0.55, 0.10),
+			}
+		3:  # STAB — fast forward thrust, long reach, lower damage
+			return {
+				"duration": 0.18,
+				"damage_mult": 0.9,
+				"rot_start": -0.10,
+				"rot_end":   -0.10,
+				"thrust_start": 4.0,
+				"thrust_end":  18.0,
+				"tint": Color(1.0, 0.95, 0.55),
+			}
+		_:
+			return {
+				"duration": attack_duration,
+				"damage_mult": 1.0,
+				"rot_start": -1.9,
+				"rot_end":    0.6,
+				"thrust_start": 0.0,
+				"thrust_end":   0.0,
+				"tint": Color(1.0, 0.85, 0.2),
+			}
+
+func _build_axe() -> void:
+	# A 2-handed battle axe drawn as a few polygons. Pivots at the grip so
+	# rotation animates around the player's hand. Hidden until an attack starts.
+	_axe = Node2D.new()
+	_axe.z_index = 2
+	_axe.visible = false
+	add_child(_axe)
+
+	_axe_pivot = Node2D.new()
+	_axe_pivot.position = Vector2(0.0, -4.0)
+	_axe.add_child(_axe_pivot)
+
+	# Shaft (haft)
+	var shaft := Polygon2D.new()
+	shaft.color = Color(0.34, 0.22, 0.12)
+	shaft.polygon = PackedVector2Array([
+		Vector2(-1.4, 0.0), Vector2(1.4, 0.0),
+		Vector2(1.6, 30.0), Vector2(-1.6, 30.0),
+	])
+	_axe_pivot.add_child(shaft)
+
+	# Grip wrap near the bottom
+	var grip := Polygon2D.new()
+	grip.color = Color(0.10, 0.08, 0.06)
+	grip.polygon = PackedVector2Array([
+		Vector2(-2.0, 4.0), Vector2(2.0, 4.0),
+		Vector2(2.0, 11.0), Vector2(-2.0, 11.0),
+	])
+	_axe_pivot.add_child(grip)
+
+	# Pommel
+	var pommel := Polygon2D.new()
+	pommel.color = Color(0.55, 0.55, 0.60)
+	pommel.polygon = PackedVector2Array([
+		Vector2(-2.2, 30.0), Vector2(2.2, 30.0),
+		Vector2(1.6, 33.0), Vector2(-1.6, 33.0),
+	])
+	_axe_pivot.add_child(pommel)
+
+	# Axe head — two-sided, the right side bigger for "primary" blade
+	var head := Polygon2D.new()
+	head.color = Color(0.72, 0.74, 0.80)
+	head.polygon = PackedVector2Array([
+		Vector2(-7.0, -3.0), Vector2(0.0, -7.0),
+		Vector2(11.0, -8.0), Vector2(15.0, -2.0),
+		Vector2(11.0,  4.0), Vector2(0.0,  3.0),
+		Vector2(-7.0, 1.0),
+	])
+	_axe_pivot.add_child(head)
+
+	# Edge highlight
+	var edge := Polygon2D.new()
+	edge.color = Color(0.92, 0.95, 1.0)
+	edge.polygon = PackedVector2Array([
+		Vector2(9.0, -7.0), Vector2(15.0, -2.0), Vector2(11.0, 4.0),
+	])
+	_axe_pivot.add_child(edge)
+
+	# Trim band on the head
+	var trim := Polygon2D.new()
+	trim.color = Color(0.42, 0.32, 0.18)
+	trim.polygon = PackedVector2Array([
+		Vector2(-3.0, -3.0), Vector2(0.0, -3.0),
+		Vector2(0.0, 3.0), Vector2(-3.0, 3.0),
+	])
+	_axe_pivot.add_child(trim)
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("hazard"):
@@ -490,6 +674,23 @@ func _update_sprite(delta: float) -> void:
 
 	sprite.flip_h = facing_right
 
+	# Animate the axe through its stage arc — and flip it with facing direction
+	# so the swing reads the same whether the marine is facing left or right.
+	if is_attacking:
+		var cfg: Dictionary = _stage_config(attack_stage)
+		var dur: float = float(cfg["duration"])
+		var t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
+		# Ease-out so the swing snaps through the active hit window
+		var te: float = 1.0 - pow(1.0 - t, 3.0)
+		var r_start: float = float(cfg["rot_start"])
+		var r_end:   float = float(cfg["rot_end"])
+		var th_start: float = float(cfg["thrust_start"])
+		var th_end:   float = float(cfg["thrust_end"])
+		_axe_pivot.rotation = lerpf(r_start, r_end, te)
+		_axe_pivot.position.x = lerpf(th_start, th_end, te)
+		_axe.scale.x = 1.0 if facing_right else -1.0
+		_axe.position.x = (4.0 if facing_right else -4.0)
+
 	var anim := &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
 	if sprite.animation != anim:
 		sprite.play(anim)
@@ -521,11 +722,29 @@ func _update_sprite(delta: float) -> void:
 	sprite.position.y = lerpf(sprite.position.y, target_y, t)
 
 func _handle_shoot_input() -> void:
-	if is_dead or _shoot_timer > 0:
+	if is_dead:
+		return
+	if Input.is_action_just_pressed("select_rifle"):
+		_set_weapon(Weapon.RIFLE)
+	elif Input.is_action_just_pressed("select_shotgun"):
+		_set_weapon(Weapon.SHOTGUN)
+	elif Input.is_action_just_pressed("cycle_weapon"):
+		_set_weapon((weapon + 1) % WEAPON_NAMES.size())
+	if _shoot_timer > 0:
 		return
 	if Input.is_action_pressed("shoot"):
 		_shoot()
-		_shoot_timer = shoot_cooldown
+
+func _set_weapon(new_weapon: int) -> void:
+	if new_weapon == weapon:
+		return
+	weapon = new_weapon
+	weapon_changed.emit(WEAPON_NAMES[weapon])
+	# Holstering doesn't unload — but if shells were depleted, give a small
+	# delay before they can be used on the swap-back so spamming Tab can't
+	# bypass the reload.
+	if weapon == Weapon.SHOTGUN and _shotgun_shells <= 0 and _shoot_timer <= 0:
+		_shoot_timer = 0.25
 
 func _shoot() -> void:
 	var mouse_pos := get_global_mouse_position()
@@ -533,11 +752,46 @@ func _shoot() -> void:
 	var dir := (mouse_pos - muzzle).normalized()
 	facing_right = dir.x >= 0.0
 
+	match weapon:
+		Weapon.SHOTGUN:
+			# Reload happens lazily — if the shoot timer expired and shells are
+			# empty, the next trigger pull re-racks before firing.
+			if _shotgun_shells <= 0:
+				_shotgun_shells = shotgun_capacity
+				shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
+			_fire_shotgun(muzzle, dir)
+			_shotgun_shells -= 1
+			shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
+			_shoot_timer = shotgun_reload_time if _shotgun_shells <= 0 else shotgun_barrel_interval
+		_:
+			_fire_rifle(muzzle, dir)
+			_shoot_timer = shoot_cooldown
+	sprite.scale = Vector2(0.26, 0.34)
+
+func _fire_rifle(muzzle: Vector2, dir: Vector2) -> void:
 	var bullet := PLAYER_BULLET_SCENE.instantiate()
 	get_parent().add_child(bullet)
 	bullet.global_position = muzzle
+	bullet.max_range = bullet_range
 	bullet.setup(dir, bullet_speed, bullet_damage)
-	sprite.scale = Vector2(0.26, 0.34)
+
+func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
+	var base_angle: float = dir.angle()
+	var pellet_dmg: int = bullet_damage * shotgun_damage_mult
+	for i in shotgun_pellet_count:
+		# Spread pellets evenly across the cone with a small random jitter
+		var t: float = -1.0 if shotgun_pellet_count == 1 else (float(i) / float(shotgun_pellet_count - 1)) * 2.0 - 1.0
+		var ang: float = base_angle + t * shotgun_spread + randf_range(-0.04, 0.04)
+		var pellet_dir: Vector2 = Vector2(cos(ang), sin(ang))
+		var pellet := PLAYER_BULLET_SCENE.instantiate()
+		get_parent().add_child(pellet)
+		pellet.global_position = muzzle
+		pellet.max_range = shotgun_pellet_range
+		pellet.setup(pellet_dir, shotgun_pellet_speed, pellet_dmg)
+		pellet.modulate = Color(1.0, 0.72, 0.30)
+	# A little knockback so the shotgun has weight
+	velocity.x -= dir.x * 60.0
+	_apply_shake(2.5)
 
 func _spawn_double_jump_effect() -> void:
 	sprite.scale = Vector2(0.39, 0.21)

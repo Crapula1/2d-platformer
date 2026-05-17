@@ -6,6 +6,7 @@ extends Node2D
 @onready var health_label: Label = $HUD/MarginContainer/VBoxContainer/HealthBar/HealthLabel
 @onready var jetpack_fill: ColorRect = $HUD/MarginContainer/VBoxContainer/JetpackBar/Fill
 @onready var jetpack_label: Label = $HUD/MarginContainer/VBoxContainer/JetpackBar/FuelLabel
+@onready var weapon_label: Label = $HUD/MarginContainer/VBoxContainer/WeaponLabel
 
 const HEALTH_BAR_INNER_W: float = 188.0
 const JETPACK_BAR_INNER_W: float = 188.0
@@ -81,6 +82,10 @@ func _ready() -> void:
 	player.grenade_changed.connect(_on_grenade_changed)
 	player.jetpack_changed.connect(_on_jetpack_changed)
 	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
+	player.weapon_changed.connect(_on_weapon_changed)
+	player.shotgun_shells_changed.connect(_on_shotgun_shells_changed)
+	_on_weapon_changed(Player.WEAPON_NAMES[player.weapon])
+	_on_shotgun_shells_changed(player._shotgun_shells, player.shotgun_capacity)
 
 	for goal in get_tree().get_nodes_in_group("goal"):
 		goal.reached.connect(_on_level_exit)
@@ -89,7 +94,7 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
+	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  1/2: Weapon  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
 
 func _process(_delta: float) -> void:
 	if Input.is_action_just_pressed("pause") and not is_instance_valid(_pause_menu):
@@ -145,6 +150,33 @@ func _on_health_changed(new_health: int, max_health: int) -> void:
 
 func _on_score_changed(new_score: int) -> void:
 	score_label.text = "Coins: " + str(new_score)
+
+var _current_weapon_name: String = "RIFLE"
+var _shotgun_shells_now: int = 0
+var _shotgun_shells_max: int = 2
+
+func _on_weapon_changed(name: String) -> void:
+	_current_weapon_name = name
+	# Tint to match the projectile color so the HUD reads at a glance
+	if name == "SHOTGUN":
+		weapon_label.add_theme_color_override("font_color", Color(1.0, 0.72, 0.30))
+	else:
+		weapon_label.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+	_refresh_weapon_label()
+
+func _on_shotgun_shells_changed(shells: int, max_shells: int) -> void:
+	_shotgun_shells_now = shells
+	_shotgun_shells_max = max_shells
+	_refresh_weapon_label()
+
+func _refresh_weapon_label() -> void:
+	if _current_weapon_name == "SHOTGUN":
+		var pips := ""
+		for i in _shotgun_shells_max:
+			pips += "●" if i < _shotgun_shells_now else "○"
+		weapon_label.text = "» SHOTGUN [%s]" % pips
+	else:
+		weapon_label.text = "» " + _current_weapon_name
 
 func _on_jetpack_changed(fuel: float, max_fuel: float) -> void:
 	var pct: float = 0.0 if max_fuel <= 0.0 else clampf(fuel / max_fuel, 0.0, 1.0)
