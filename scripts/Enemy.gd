@@ -5,6 +5,9 @@ class_name Enemy
 @export var max_health: int = 2
 @export var damage: int = 1
 @export var patrol_distance: float = 100.0
+@export_range(0.0, 1.0) var health_drop_chance: float = 0.2
+
+const HEALTH_PICKUP_SCENE := preload("res://scenes/HealthPickup.tscn")
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var current_health: int
@@ -107,4 +110,19 @@ func _die() -> void:
 	# Fall off screen
 	collision_layer = 0
 	collision_mask = 1
+	_maybe_drop_health()
 	EnemyFx.free_after(self, 1.5)
+
+func _maybe_drop_health() -> void:
+	# Host is the only one allowed to spawn loot in MP so we don't get
+	# duplicates. Solo (no peer) always passes the check.
+	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
+		return
+	if randf() >= health_drop_chance:
+		return
+	var pickup := HEALTH_PICKUP_SCENE.instantiate() as Node2D
+	var scene_root := get_tree().current_scene
+	if scene_root == null:
+		return
+	scene_root.add_child(pickup)
+	pickup.global_position = global_position
