@@ -14,7 +14,7 @@ size = Vector2(38, 28)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
 size = Vector2(18, 26)
 
-[sub_resource type="SceneReplicationConfig" id="ReplConfig_demon"]
+[sub_resource type="SceneReplicationConfig" id="ReplConfig_great"]
 properties/0/path = NodePath(".:position")
 properties/0/spawn = true
 properties/0/replication_mode = 2
@@ -61,7 +61,7 @@ properties/14/path = NodePath(".:is_rolling")
 properties/14/spawn = true
 properties/14/replication_mode = 2
 
-[node name="PlayerDemon" type="CharacterBody2D"]
+[node name="PlayerGreaterDemon" type="CharacterBody2D"]
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_player")
@@ -71,58 +71,112 @@ base_scale = Vector2(1, 1)
 
 [node name="Facing" type="Node2D" parent="Sprite"]
 
+[node name="Cape" type="Polygon2D" parent="Sprite/Facing"]
+position = Vector2(-4, 0)
+color = Color(0.10, 0.04, 0.04, 0.85)
+polygon = PackedVector2Array(0, -10, -4, -6, -6, 0, -10, 8, -12, 14, -8, 14, -4, 8, -2, 2, 0, -4)
+
 [node name="WingL" type="Polygon2D" parent="Sprite/Facing"]
-position = Vector2(-3, -4)
-color = Color(0.55, 0.08, 0.1, 1)
-polygon = PackedVector2Array(0, 0, -8, -10, -18, -16, -26, -10, -18, -4, -22, 2, -12, -2, -16, 6, -4, 4)
+position = Vector2(-4, -6)
+color = Color(0.18, 0.04, 0.08, 1)
+polygon = PackedVector2Array(0, 0, -8, -14, -22, -22, -32, -16, -38, -8, -28, -10, -20, -6, -26, 0, -18, -2, -14, 6, -22, 10, -10, 8, -4, 4)
 
 [node name="WingR" type="Polygon2D" parent="Sprite/Facing"]
-position = Vector2(-3, 4)
-color = Color(0.55, 0.08, 0.1, 1)
-polygon = PackedVector2Array(0, 0, -8, 10, -18, 16, -26, 10, -18, 4, -22, -2, -12, 2, -16, -6, -4, -4)
+position = Vector2(-4, 6)
+color = Color(0.18, 0.04, 0.08, 1)
+polygon = PackedVector2Array(0, 0, -8, 14, -22, 22, -32, 16, -38, 8, -28, 10, -20, 6, -26, 0, -18, 2, -14, -6, -22, -10, -10, -8, -4, -4)
 
 [node name="Legs" type="ColorRect" parent="Sprite/Facing"]
-offset_left = -5.0
-offset_top = 10.0
-offset_right = 5.0
-offset_bottom = 14.0
-color = Color(0.1, 0.06, 0.08, 1)
+offset_left = -7.0
+offset_top = 14.0
+offset_right = 7.0
+offset_bottom = 20.0
+color = Color(0.08, 0.04, 0.06, 1)
+
+[node name="Claws" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.85, 0.80, 0.75, 1)
+polygon = PackedVector2Array(-6, 20, -4, 22, -2, 20, 0, 22, 2, 20, 4, 22, 6, 20)
 
 [node name="Belt" type="ColorRect" parent="Sprite/Facing"]
-offset_left = -6.0
-offset_top = 7.0
-offset_right = 6.0
-offset_bottom = 10.0
-color = Color(0.18, 0.1, 0.06, 1)
+offset_left = -8.0
+offset_top = 10.0
+offset_right = 8.0
+offset_bottom = 14.0
+color = Color(0.16, 0.08, 0.06, 1)
 
 [node name="Torso" type="ColorRect" parent="Sprite/Facing"]
-offset_left = -6.0
-offset_top = -2.0
-offset_right = 6.0
-offset_bottom = 7.0
-color = Color(0.85, 0.2, 0.2, 1)
+offset_left = -8.0
+offset_top = -3.0
+offset_right = 8.0
+offset_bottom = 10.0
+color = Color(0.55, 0.10, 0.12, 1)
+
+[node name="ChestPlate" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.20, 0.05, 0.08, 0.65)
+polygon = PackedVector2Array(-7, -2, 7, -2, 5, 7, -5, 7)
+
+[node name="ChestRune" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(1.0, 0.55, 0.15, 1)
+polygon = PackedVector2Array(0, 0, 3, 3, 0, 6, -3, 3)
+
+[node name="ShoulderL" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -10.0
+offset_top = -4.0
+offset_right = -7.0
+offset_bottom = 1.0
+color = Color(0.28, 0.05, 0.08, 1)
+
+[node name="ShoulderR" type="ColorRect" parent="Sprite/Facing"]
+offset_left = 7.0
+offset_top = -4.0
+offset_right = 10.0
+offset_bottom = 1.0
+color = Color(0.28, 0.05, 0.08, 1)
 
 [node name="Head" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -6.0
+offset_top = -14.0
+offset_right = 6.0
+offset_bottom = -3.0
+color = Color(0.28, 0.05, 0.08, 1)
+
+[node name="JawShadow" type="ColorRect" parent="Sprite/Facing"]
 offset_left = -5.0
-offset_top = -11.0
+offset_top = -5.0
 offset_right = 5.0
-offset_bottom = -2.0
-color = Color(0.7, 0.15, 0.15, 1)
+offset_bottom = -3.0
+color = Color(0.05, 0.02, 0.04, 1)
 
 [node name="HornL" type="Polygon2D" parent="Sprite/Facing"]
-color = Color(0.1, 0.05, 0.05, 1)
-polygon = PackedVector2Array(-5, -11, -2, -11, -3, -16, -6, -14)
+color = Color(0.08, 0.04, 0.04, 1)
+polygon = PackedVector2Array(-6, -14, -3, -14, -4, -22, -8, -20)
 
 [node name="HornR" type="Polygon2D" parent="Sprite/Facing"]
-color = Color(0.1, 0.05, 0.05, 1)
-polygon = PackedVector2Array(2, -11, 5, -11, 6, -14, 3, -16)
+color = Color(0.08, 0.04, 0.04, 1)
+polygon = PackedVector2Array(3, -14, 6, -14, 8, -20, 4, -22)
+
+[node name="HornL2" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.08, 0.04, 0.04, 1)
+polygon = PackedVector2Array(-3, -14, -1, -14, -2, -18, -4, -17)
+
+[node name="HornR2" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.08, 0.04, 0.04, 1)
+polygon = PackedVector2Array(1, -14, 3, -14, 4, -17, 2, -18)
 
 [node name="Eye" type="ColorRect" parent="Sprite/Facing"]
-offset_left = -1.0
-offset_top = -8.0
-offset_right = 3.0
-offset_bottom = -5.0
-color = Color(1, 0.95, 0.4, 1)
+offset_left = -2.0
+offset_top = -10.0
+offset_right = 4.0
+offset_bottom = -7.0
+color = Color(1.0, 0.85, 0.30, 1)
+
+[node name="FangL" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.95, 0.92, 0.85, 1)
+polygon = PackedVector2Array(-3, -4, -2, -2, -1, -4)
+
+[node name="FangR" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.95, 0.92, 0.85, 1)
+polygon = PackedVector2Array(1, -4, 2, -2, 3, -4)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")
@@ -159,4 +213,4 @@ limit_right = 10000
 limit_bottom = 900
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
-replication_config = SubResource("ReplConfig_demon")
+replication_config = SubResource("ReplConfig_great")

@@ -17,8 +17,14 @@ const CHARACTERS: Array[Dictionary] = [
 	{
 		"id": "demon",
 		"name": "DEMON",
-		"desc": "Heavy axe brawler. Demonic mobility.\nNo firearm — close-quarters only.",
+		"desc": "Lithe demonic brawler. Light frame,\nquick swings, single pair of horns.",
 		"tint": Color(0.95, 0.30, 0.30),
+	},
+	{
+		"id": "greater_demon",
+		"name": "GREATER DEMON",
+		"desc": "Heavy demonic warlord. Caped, twin\nhorn pairs, claws — armored melee.",
+		"tint": Color(1.0, 0.55, 0.15),
 	},
 ]
 

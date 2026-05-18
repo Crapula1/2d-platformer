@@ -110,12 +110,17 @@ func _swap_embedded_player(character_id: String) -> void:
 		return
 	var spawn_xy: Vector2 = embedded.global_position
 	embedded.queue_free()
-	var scene_path: String = "res://scenes/PlayerDemon.tscn" if character_id == "demon" \
-		else "res://scenes/Player.tscn"
+	var scene_path: String = _scene_path_for_character(character_id)
 	var new_p := (load(scene_path) as PackedScene).instantiate() as Node2D
 	new_p.name = "Player"
 	_level.add_child(new_p)
 	new_p.global_position = spawn_xy
+
+func _scene_path_for_character(character_id: String) -> String:
+	match character_id:
+		"demon":         return "res://scenes/PlayerDemon.tscn"
+		"greater_demon": return "res://scenes/PlayerGreaterDemon.tscn"
+		_:               return "res://scenes/Player.tscn"
 
 func _setup_multiplayer() -> void:
 	# Remove the solo Player that's baked into Level so the spawner is the
@@ -189,7 +194,7 @@ func _spawn_all_players() -> void:
 		i += 1
 
 func _spawn_player_node(data: Dictionary) -> Node:
-	var scene_path: String = "res://scenes/PlayerDemon.tscn" if String(data.get("character", "marine")) == "demon" else "res://scenes/Player.tscn"
+	var scene_path: String = _scene_path_for_character(String(data.get("character", "marine")))
 	var p := (load(scene_path) as PackedScene).instantiate()
 	var peer_id := int(data.get("peer", 1))
 	p.name = "P_%d" % peer_id
