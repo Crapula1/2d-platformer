@@ -571,7 +571,11 @@ func _start_attack(stage: int) -> void:
 	_slide_bash = is_sliding
 	if is_sliding:
 		_end_slide()
-	var chaining: bool = _axe.visible
+	# Polygon-based avatars (demon, greater demon) skip _build_axe, so the
+	# axe/arm rig is null. The attack still resolves through attack_area,
+	# we just have nothing to pose.
+	var has_axe_rig: bool = _axe != null
+	var chaining: bool = has_axe_rig and _axe.visible
 	attack_stage = stage
 	is_attacking = true
 	var cfg: Dictionary = _stage_config(stage)
@@ -607,21 +611,22 @@ func _start_attack(stage: int) -> void:
 	# Anchor the axe at the marine's front hand. The first phase of each
 	# attack eases from the swing's origin pose to rot_start (the windup),
 	# the second phase eases through to rot_end (the strike).
-	if chaining:
-		_attack_swing_origin_rot = _axe_pivot.rotation
-		_attack_swing_origin_thrust = _axe_pivot.position.x
-	else:
-		# Fresh attack: drop in already at rot_start so there's no jump.
-		_attack_swing_origin_rot = float(cfg["rot_start"])
-		_attack_swing_origin_thrust = float(cfg["thrust_start"])
-		_axe_pivot.rotation = _attack_swing_origin_rot
-		_axe_pivot.position = Vector2(_attack_swing_origin_thrust, 0.0)
+	if has_axe_rig:
+		if chaining:
+			_attack_swing_origin_rot = _axe_pivot.rotation
+			_attack_swing_origin_thrust = _axe_pivot.position.x
+		else:
+			# Fresh attack: drop in already at rot_start so there's no jump.
+			_attack_swing_origin_rot = float(cfg["rot_start"])
+			_attack_swing_origin_thrust = float(cfg["thrust_start"])
+			_axe_pivot.rotation = _attack_swing_origin_rot
+			_axe_pivot.position = Vector2(_attack_swing_origin_thrust, 0.0)
 
-	_axe.visible = true
-	_arm_front.visible = true
-	_arm_back.visible = true
-	_hand_front.visible = true
-	_hand_back.visible = true
+		_axe.visible = true
+		_arm_front.visible = true
+		_arm_back.visible = true
+		_hand_front.visible = true
+		_hand_back.visible = true
 
 func _end_attack() -> void:
 	is_attacking = false
@@ -637,12 +642,13 @@ func _end_attack() -> void:
 	# pulls the trigger again within it, they continue the combo.
 	_attack_buffered = false
 	_combo_window_timer = combo_window
-	# Hide the axe + arms between swings
-	_axe.visible = false
-	_arm_front.visible = false
-	_arm_back.visible = false
-	_hand_front.visible = false
-	_hand_back.visible = false
+	# Hide the axe + arms between swings (marine only — others skip the rig)
+	if _axe != null:
+		_axe.visible = false
+		_arm_front.visible = false
+		_arm_back.visible = false
+		_hand_front.visible = false
+		_hand_back.visible = false
 
 func _on_attack_hit(body: Node) -> void:
 	if body == null or body in _hit_this_swing:

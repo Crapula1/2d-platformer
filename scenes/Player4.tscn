@@ -1,7 +1,6 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/Player4.gd" id="1_player"]
-[ext_resource type="SpriteFrames" path="res://squirrel_frames.tres" id="2_frames"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(20, 28)
@@ -66,14 +65,65 @@ properties/14/replication_mode = 2
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_player")
-base_scale = Vector2(0.30, 0.30)
+base_scale = Vector2(1, 1)
 
-[node name="Sprite" type="AnimatedSprite2D" parent="."]
-position = Vector2(0, 7)
-scale = Vector2(0.30, 0.30)
-sprite_frames = ExtResource("2_frames")
-animation = &"idle"
-autoplay = "idle"
+[node name="Sprite" type="Node2D" parent="."]
+
+[node name="Facing" type="Node2D" parent="Sprite"]
+
+[node name="Tail" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.55, 0.32, 0.14, 1)
+polygon = PackedVector2Array(-6, 6, -14, 0, -18, -10, -14, -18, -8, -14, -10, -6, -6, 0)
+
+[node name="Legs" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -5.0
+offset_top = 10.0
+offset_right = 5.0
+offset_bottom = 14.0
+color = Color(0.30, 0.18, 0.08, 1)
+
+[node name="Belly" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -4.0
+offset_top = -1.0
+offset_right = 4.0
+offset_bottom = 9.0
+color = Color(0.92, 0.78, 0.58, 1)
+
+[node name="Torso" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -6.0
+offset_top = -2.0
+offset_right = 6.0
+offset_bottom = 8.0
+color = Color(0.78, 0.50, 0.22, 1)
+
+[node name="Head" type="ColorRect" parent="Sprite/Facing"]
+offset_left = -5.0
+offset_top = -11.0
+offset_right = 5.0
+offset_bottom = -2.0
+color = Color(0.85, 0.55, 0.22, 1)
+
+[node name="EarL" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.60, 0.35, 0.15, 1)
+polygon = PackedVector2Array(-5, -11, -3, -11, -4, -15)
+
+[node name="EarR" type="Polygon2D" parent="Sprite/Facing"]
+color = Color(0.60, 0.35, 0.15, 1)
+polygon = PackedVector2Array(3, -11, 5, -11, 4, -15)
+
+[node name="Snout" type="ColorRect" parent="Sprite/Facing"]
+offset_left = 2.0
+offset_top = -6.0
+offset_right = 6.0
+offset_bottom = -3.0
+color = Color(0.96, 0.84, 0.66, 1)
+
+[node name="Eye" type="ColorRect" parent="Sprite/Facing"]
+offset_left = 0.0
+offset_top = -8.0
+offset_right = 2.0
+offset_bottom = -6.0
+color = Color(0.05, 0.03, 0.02, 1)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")

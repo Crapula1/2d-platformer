@@ -109,6 +109,7 @@ func _ready() -> void:
 	_build_section_h_final_stretch()
 	_spawn_winged_demons()
 	_spawn_critters()
+	# Player is spawned by Main.gd, which calls apply_player_camera afterward.
 	_setup_player_camera()
 
 func _spawn_winged_demons() -> void:
@@ -1288,7 +1289,9 @@ func _build_section_h_final_stretch() -> void:
 # for this level. Expand bounds to match the sealed world.
 # -----------------------------------------------------------------------------
 func _setup_player_camera() -> void:
-	var player_node := get_node_or_null("Player") as Node2D
+	apply_player_camera(get_node_or_null("Player") as Node2D)
+
+func apply_player_camera(player_node: Node2D) -> void:
 	if player_node == null:
 		return
 	var cam := player_node.get_node_or_null("Camera2D") as Camera2D

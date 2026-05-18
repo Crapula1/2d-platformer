@@ -4,7 +4,7 @@ extends Node
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
-const CHARACTERS: Array[String] = ["marine", "demon"]
+const CHARACTERS: Array[String] = ["marine", "demon", "greater_demon", "squirrel"]
 const GAME_SCENE_PATH: String = "res://scenes/Main.tscn"
 const MENU_SCENE_PATH: String = "res://scenes/MainMenu.tscn"
 

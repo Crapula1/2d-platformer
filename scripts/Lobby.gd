@@ -3,12 +3,16 @@ extends Control
 # Shows the host's LAN IPs so others know what to type into Join.
 
 const CHAR_COLORS := {
-	"marine": Color(0.55, 0.92, 1.0),
-	"demon":  Color(0.95, 0.35, 0.30),
+	"marine":        Color(0.55, 0.92, 1.0),
+	"demon":         Color(0.95, 0.35, 0.30),
+	"greater_demon": Color(1.0, 0.55, 0.15),
+	"squirrel":      Color(0.85, 0.55, 0.22),
 }
 const CHAR_DESCRIPTIONS := {
-	"marine": "Standard kit:\nrifle + shotgun + axe combo",
-	"demon":  "Flame-tinted bruiser:\nmelee hitbox only (no axe yet)",
+	"marine":        "Standard kit:\nrifle + shotgun + axe combo",
+	"demon":         "Flame-tinted bruiser:\nmelee hitbox only (no axe yet)",
+	"greater_demon": "Caped warlord:\ntwin horns, armored melee",
+	"squirrel":      "Quick scrapper:\nslash / stab / slide kit",
 }
 const MARINE_ICON_PATH := "res://assets/sprites/frames/idle_0.png"
 
@@ -258,18 +262,25 @@ func _build_character_tile(character: String) -> Control:
 	return panel
 
 func _build_preview(character: String, accent: Color) -> Control:
-	if character == "marine":
-		var tex := Control.new()
-		var rect := TextureRect.new()
-		rect.texture = load(MARINE_ICON_PATH) as Texture2D
-		rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		rect.anchor_right = 1.0
-		rect.anchor_bottom = 1.0
-		tex.add_child(rect)
-		return tex
-	# Demon preview — small stylized stand-in with the avatar's accent color.
+	match character:
+		"marine":         return _build_marine_preview()
+		"greater_demon":  return _build_greater_demon_preview(accent)
+		"squirrel":       return _build_squirrel_preview(accent)
+		_:                return _build_demon_preview(accent)
+
+func _build_marine_preview() -> Control:
+	var tex := Control.new()
+	var rect := TextureRect.new()
+	rect.texture = load(MARINE_ICON_PATH) as Texture2D
+	rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.anchor_right = 1.0
+	rect.anchor_bottom = 1.0
+	tex.add_child(rect)
+	return tex
+
+func _build_demon_preview(accent: Color) -> Control:
 	var holder := Control.new()
 	var body := ColorRect.new()
 	body.color = accent
@@ -293,6 +304,87 @@ func _build_preview(character: String, accent: Color) -> Control:
 	eye.color = Color(1.0, 0.95, 0.4)
 	eye.offset_left = 28; eye.offset_top = 14
 	eye.offset_right = 36; eye.offset_bottom = 20
+	holder.add_child(eye)
+	return holder
+
+func _build_greater_demon_preview(accent: Color) -> Control:
+	# Heavier silhouette than the lesser demon: wider body, draped cape behind,
+	# two pairs of horns to match the in-game GreaterDemon.
+	var holder := Control.new()
+	var cape := Polygon2D.new()
+	cape.color = accent.darkened(0.45)
+	cape.polygon = PackedVector2Array([
+		Vector2(10, 24), Vector2(54, 24),
+		Vector2(58, 62), Vector2(6, 62),
+	])
+	holder.add_child(cape)
+	var body := ColorRect.new()
+	body.color = accent
+	body.offset_left = 14; body.offset_top = 24
+	body.offset_right = 50; body.offset_bottom = 60
+	holder.add_child(body)
+	var head := ColorRect.new()
+	head.color = accent.darkened(0.18)
+	head.offset_left = 20; head.offset_top = 8
+	head.offset_right = 44; head.offset_bottom = 26
+	holder.add_child(head)
+	# Inner horn pair
+	var horn_il := Polygon2D.new()
+	horn_il.color = Color(0.10, 0.05, 0.05)
+	horn_il.polygon = PackedVector2Array([Vector2(24, 8), Vector2(28, 8), Vector2(26, 1), Vector2(22, 5)])
+	holder.add_child(horn_il)
+	var horn_ir := Polygon2D.new()
+	horn_ir.color = Color(0.10, 0.05, 0.05)
+	horn_ir.polygon = PackedVector2Array([Vector2(36, 8), Vector2(40, 8), Vector2(42, 5), Vector2(38, 1)])
+	holder.add_child(horn_ir)
+	# Outer horn pair, swept wider
+	var horn_ol := Polygon2D.new()
+	horn_ol.color = Color(0.08, 0.03, 0.03)
+	horn_ol.polygon = PackedVector2Array([Vector2(20, 10), Vector2(24, 10), Vector2(18, 0), Vector2(14, 6)])
+	holder.add_child(horn_ol)
+	var horn_or := Polygon2D.new()
+	horn_or.color = Color(0.08, 0.03, 0.03)
+	horn_or.polygon = PackedVector2Array([Vector2(40, 10), Vector2(44, 10), Vector2(50, 6), Vector2(46, 0)])
+	holder.add_child(horn_or)
+	var eye := ColorRect.new()
+	eye.color = Color(1.0, 0.85, 0.30)
+	eye.offset_left = 26; eye.offset_top = 14
+	eye.offset_right = 38; eye.offset_bottom = 20
+	holder.add_child(eye)
+	return holder
+
+func _build_squirrel_preview(accent: Color) -> Control:
+	# Small body + oversized bushy tail curling up behind it.
+	var holder := Control.new()
+	var tail := Polygon2D.new()
+	tail.color = accent.darkened(0.10)
+	tail.polygon = PackedVector2Array([
+		Vector2(40, 56), Vector2(54, 50), Vector2(58, 32),
+		Vector2(52, 18), Vector2(44, 26), Vector2(46, 42),
+	])
+	holder.add_child(tail)
+	var body := ColorRect.new()
+	body.color = accent
+	body.offset_left = 22; body.offset_top = 30
+	body.offset_right = 42; body.offset_bottom = 58
+	holder.add_child(body)
+	var head := ColorRect.new()
+	head.color = accent.lightened(0.10)
+	head.offset_left = 24; head.offset_top = 14
+	head.offset_right = 40; head.offset_bottom = 30
+	holder.add_child(head)
+	var ear_l := Polygon2D.new()
+	ear_l.color = accent.darkened(0.20)
+	ear_l.polygon = PackedVector2Array([Vector2(24, 14), Vector2(28, 14), Vector2(26, 8)])
+	holder.add_child(ear_l)
+	var ear_r := Polygon2D.new()
+	ear_r.color = accent.darkened(0.20)
+	ear_r.polygon = PackedVector2Array([Vector2(36, 14), Vector2(40, 14), Vector2(38, 8)])
+	holder.add_child(ear_r)
+	var eye := ColorRect.new()
+	eye.color = Color(0.05, 0.05, 0.05)
+	eye.offset_left = 30; eye.offset_top = 19
+	eye.offset_right = 34; eye.offset_bottom = 23
 	holder.add_child(eye)
 	return holder
 

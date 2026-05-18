@@ -91,30 +91,75 @@ func _ready() -> void:
 	hint_label.visible = false
 
 func _setup_singleplayer() -> void:
-	# Level.tscn ships with the Marine Player baked in. If the user picked
-	# a different character on the select screen, swap it out before we
-	# wire HUD signals.
-	if RunState.character != "marine":
-		_swap_embedded_player(RunState.character)
-	player = get_tree().get_first_node_in_group("player") as Player
-	if player == null:
+	# Level.tscn no longer ships an embedded Player — we always spawn the
+	# character selected on the CharacterSelect screen from scratch so the
+	# pick on that screen is what shows up in-game.
+	if _level == null:
 		return
+
+	# Belt-and-suspenders: if some other path left a stray Player node in the
+	# tree, clear it before we add ours.
+	var stray: Node = get_tree().get_first_node_in_group("player")
+	if stray != null:
+		stray.remove_from_group("player")
+		var stray_parent := stray.get_parent()
+		if stray_parent != null:
+			stray_parent.remove_child(stray)
+		stray.free()
+
+	var spawn_xy: Vector2 = _find_spawn_position()
+	var scene_path: String = _scene_path_for_character(RunState.character)
+	var packed := load(scene_path) as PackedScene
+	if packed == null:
+		push_warning("[Main] Failed to load player scene: " + scene_path)
+		return
+	var new_node: Node = packed.instantiate()
+	if not (new_node is Player):
+		push_warning("[Main] Player scene root is not a Player: " + scene_path)
+		new_node.queue_free()
+		return
+	var new_p: Player = new_node as Player
+	new_p.name = "Player"
+	_level.add_child(new_p)
+	new_p.global_position = spawn_xy
+	print("[Main] Spawned character=%s scene=%s at %s" % [
+		RunState.character, scene_path, str(spawn_xy)])
+	_flash_spawned_character_banner(RunState.character, scene_path)
+
+	# Camera limits must be applied after the player is in the tree so the
+	# Camera2D node exists and is current.
+	if _level.has_method("apply_player_camera"):
+		_level.apply_player_camera(new_p)
+
+	player = new_p
 	if RunState.depth > 0:
 		RunState.apply_to_player(player)
 	spawn_position = player.global_position
 	_wire_hud_to_player(player)
 
-func _swap_embedded_player(character_id: String) -> void:
-	var embedded := get_tree().get_first_node_in_group("player") as Node2D
-	if embedded == null or _level == null:
-		return
-	var spawn_xy: Vector2 = embedded.global_position
-	embedded.queue_free()
-	var scene_path: String = _scene_path_for_character(character_id)
-	var new_p := (load(scene_path) as PackedScene).instantiate() as Node2D
-	new_p.name = "Player"
-	_level.add_child(new_p)
-	new_p.global_position = spawn_xy
+func _flash_spawned_character_banner(character_id: String, scene_path: String) -> void:
+	# Diagnostic: a 2-second banner on the HUD shows which character + scene
+	# Main actually instantiated. If you pick demon and see "MARINE" here,
+	# the bug is upstream of Main (RunState wasn't set / scene cache stale).
+	# Remove this once character select is confirmed working.
+	var overlay := CanvasLayer.new()
+	overlay.layer = 12
+	add_child(overlay)
+	var label := Label.new()
+	label.text = "SPAWNED %s\n(%s)" % [character_id.to_upper(), scene_path]
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.4))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 5)
+	label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	label.offset_top = 70.0
+	label.offset_bottom = 130.0
+	overlay.add_child(label)
+	get_tree().create_timer(3.0).timeout.connect(func() -> void:
+		if is_instance_valid(overlay):
+			overlay.queue_free()
+	)
 
 func _scene_path_for_character(character_id: String) -> String:
 	match character_id:
