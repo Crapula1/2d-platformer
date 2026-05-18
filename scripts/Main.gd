@@ -350,10 +350,10 @@ var _current_weapon_name: String = "RIFLE"
 var _shotgun_shells_now: int = 0
 var _shotgun_shells_max: int = 2
 
-func _on_weapon_changed(name: String) -> void:
-	_current_weapon_name = name
+func _on_weapon_changed(weapon_name: String) -> void:
+	_current_weapon_name = weapon_name
 	# Tint to match the projectile color so the HUD reads at a glance
-	if name == "SHOTGUN":
+	if weapon_name == "SHOTGUN":
 		weapon_label.add_theme_color_override("font_color", Color(1.0, 0.72, 0.30))
 	else:
 		weapon_label.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))

@@ -1055,11 +1055,11 @@ func _set_facing(face_right: bool) -> void:
 		s = 1.0
 	_facing_node.scale.x = s if face_right else -s
 
-func _play_anim(name: StringName) -> void:
+func _play_anim(anim_name: StringName) -> void:
 	if _anim_sprite == null:
 		return
-	if _anim_sprite.animation != name:
-		_anim_sprite.play(name)
+	if _anim_sprite.animation != anim_name:
+		_anim_sprite.play(anim_name)
 
 func _handle_shoot_input() -> void:
 	if is_dead:
