@@ -91,7 +91,11 @@ func _ready() -> void:
 	hint_label.visible = false
 
 func _setup_singleplayer() -> void:
-	# Level.tscn already contains the Player as a direct child.
+	# Level.tscn ships with the Marine Player baked in. If the user picked
+	# a different character on the select screen, swap it out before we
+	# wire HUD signals.
+	if RunState.character != "marine":
+		_swap_embedded_player(RunState.character)
 	player = get_tree().get_first_node_in_group("player") as Player
 	if player == null:
 		return
@@ -99,6 +103,19 @@ func _setup_singleplayer() -> void:
 		RunState.apply_to_player(player)
 	spawn_position = player.global_position
 	_wire_hud_to_player(player)
+
+func _swap_embedded_player(character_id: String) -> void:
+	var embedded := get_tree().get_first_node_in_group("player") as Node2D
+	if embedded == null or _level == null:
+		return
+	var spawn_xy: Vector2 = embedded.global_position
+	embedded.queue_free()
+	var scene_path: String = "res://scenes/PlayerDemon.tscn" if character_id == "demon" \
+		else "res://scenes/Player.tscn"
+	var new_p := (load(scene_path) as PackedScene).instantiate() as Node2D
+	new_p.name = "Player"
+	_level.add_child(new_p)
+	new_p.global_position = spawn_xy
 
 func _setup_multiplayer() -> void:
 	# Remove the solo Player that's baked into Level so the spawner is the

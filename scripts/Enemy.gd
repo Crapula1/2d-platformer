@@ -22,6 +22,12 @@ var _base_color: Color
 @onready var floor_check: RayCast2D = $FloorCheck
 
 func _ready() -> void:
+	# Difficulty scaling: bump enemy HP + speed before init copies max_health.
+	if RunState != null:
+		if RunState.enemy_hp_mult != 1.0:
+			max_health = maxi(int(round(float(max_health) * RunState.enemy_hp_mult)), 1)
+		if RunState.enemy_speed_mult != 1.0:
+			speed *= RunState.enemy_speed_mult
 	current_health = max_health
 	start_position = global_position
 	_base_color = sprite.color

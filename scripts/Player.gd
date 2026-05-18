@@ -176,6 +176,10 @@ var _facing_node: Node2D = null
 @onready var hurtbox: Area2D = $Hurtbox
 
 func _ready() -> void:
+	# Apply difficulty scaling to the starting HP cap before the rest of the
+	# init reads max_health. RunState autoload is always present.
+	if RunState != null and RunState.player_max_hp_mult != 1.0:
+		max_health = maxi(int(round(float(max_health) * RunState.player_max_hp_mult)), 1)
 	current_health = max_health
 	jumps_remaining = max_jumps
 	attack_shape.disabled = true

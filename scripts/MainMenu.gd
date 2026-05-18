@@ -6,6 +6,7 @@ extends Control
 const GAME_SCENE := "res://scenes/Main.tscn"
 const OPTIONS_SCENE := "res://scenes/OptionsMenu.tscn"
 const CONTROLS_SCENE := "res://scenes/ControlsMenu.tscn"
+const CHARACTER_SELECT_SCENE := "res://scenes/CharacterSelect.tscn"
 const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 
 @onready var center: CenterContainer = $Center
@@ -180,8 +181,9 @@ func _input(event: InputEvent) -> void:
 		accept_event()
 
 func _on_start() -> void:
-	RunState.start_new_run()
-	get_tree().change_scene_to_file(GAME_SCENE)
+	# Detour through the character + difficulty picker. The picker itself
+	# calls RunState.start_new_run() and loads the game scene.
+	get_tree().change_scene_to_file(CHARACTER_SELECT_SCENE)
 
 func _on_options() -> void:
 	get_tree().change_scene_to_file(OPTIONS_SCENE)
