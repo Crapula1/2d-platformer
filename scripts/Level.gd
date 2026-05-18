@@ -1298,16 +1298,12 @@ func _setup_player_camera() -> void:
 	cam.limit_top    = int(LEVEL_TOP - 100.0)
 	cam.limit_right  = int(LEVEL_RIGHT)
 	cam.limit_bottom = int(FLOOR_BOTTOM)
-	# Metroid / Hollow Knight feel: room for the camera to lead in the direction
-	# of motion, with a small vertical drag for jumps.
-	cam.position_smoothing_enabled = true
-	cam.position_smoothing_speed = 6.0
-	cam.drag_horizontal_enabled = true
-	cam.drag_left_margin = 0.20
-	cam.drag_right_margin = 0.20
-	cam.drag_vertical_enabled = true
-	cam.drag_top_margin = 0.18
-	cam.drag_bottom_margin = 0.30
+	# Tight follow — no smoothing, no drag deadzone — so the camera always
+	# pans with the player and never feels "stuck" near the edges.
+	cam.position_smoothing_enabled = false
+	cam.drag_horizontal_enabled = false
+	cam.drag_vertical_enabled = false
+	cam.zoom = Vector2.ONE
 
 # -----------------------------------------------------------------------------
 # Atmospheric critters — purely cosmetic squirrels & rabbits.
