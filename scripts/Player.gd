@@ -71,7 +71,7 @@ var _attack_swing_origin_thrust: float = 0.0
 
 # Shooting — rifle
 @export var bullet_speed: float = 500.0
-@export var bullet_range: float = 640.0
+@export var bullet_range: float = 1280.0
 @export var shoot_cooldown: float = 0.18
 @export var bullet_damage: int = 1
 
@@ -80,7 +80,7 @@ var _attack_swing_origin_thrust: float = 0.0
 @export var shotgun_grid_lateral: float = 6.0      # perpendicular spread (px)
 @export var shotgun_grid_depth: float = 7.0        # along-axis stagger (px)
 @export var shotgun_pellet_speed: float = 500.0
-@export var shotgun_pellet_range: float = 480.0
+@export var shotgun_pellet_range: float = 960.0
 @export var shotgun_capacity: int = 2              # double-barrel
 @export var shotgun_barrel_interval: float = 0.18  # fast follow-up between barrels
 @export var shotgun_reload_time: float = 0.85      # crack-and-reload after both barrels
