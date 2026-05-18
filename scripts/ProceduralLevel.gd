@@ -21,7 +21,6 @@ const BREAK_PLATFORM_SCRIPT  := preload("res://scripts/BreakPlatform.gd")
 const ROOM_PORTAL_SCRIPT     := preload("res://scripts/RoomPortal.gd")
 
 var _rooms: Array = []
-var _player: Player = null
 var _cam: Camera2D = null
 var _is_transitioning: bool = false
 
