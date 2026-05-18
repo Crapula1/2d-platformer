@@ -117,6 +117,11 @@ var slide_timer: float = 0.0
 var slide_cooldown_timer: float = 0.0
 var slide_dir: float = 1.0
 var _slide_bash: bool = false
+
+# Enemies the current swing has already damaged. Cleared on each new swing so
+# every fresh stage can hit, but a single sweep can't double-tap one target
+# (and the deferred "already overlapping" sweep can't either).
+var _hit_this_swing: Array[Node] = []
 var active_buffs: Dictionary = {}
 var is_wall_sliding: bool = false
 var is_dashing: bool = false
@@ -570,6 +575,13 @@ func _start_attack(stage: int) -> void:
 	attack_shape.disabled = false
 	var reach: float = 28.0 if stage == 3 else 20.0
 	attack_area.position.x = reach if facing_right else -reach
+
+	# Start of a new swing — reset the per-swing hit list and catch anyone
+	# already standing inside the freshly-enabled hitbox (body_entered only
+	# fires on NEW overlaps, so without this enemies at point-blank range
+	# would just be missed).
+	_hit_this_swing.clear()
+	_sweep_attack_overlap.call_deferred()
 	var tint: Color = cfg["tint"]
 	if _slide_bash:
 		tint = Color(1.0, 0.38, 0.08)
@@ -617,6 +629,9 @@ func _end_attack() -> void:
 	_hand_back.visible = false
 
 func _on_attack_hit(body: Node) -> void:
+	if body == null or body in _hit_this_swing:
+		return
+	_hit_this_swing.append(body)
 	var cfg: Dictionary = _stage_config(attack_stage)
 	var mult: float = float(cfg.get("damage_mult", 1.0))
 	var dmg: int = int(attack_damage * mult * (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
@@ -626,6 +641,15 @@ func _on_attack_hit(body: Node) -> void:
 		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
 	elif body.has_method("take_damage"):
 		body.take_damage(dmg, global_position)
+
+func _sweep_attack_overlap() -> void:
+	# Apply the current swing to any bodies already inside the hitbox.
+	# Runs deferred so Godot has updated the overlap list for this physics
+	# frame after we flipped attack_shape.disabled.
+	if not is_attacking or attack_area == null:
+		return
+	for body in attack_area.get_overlapping_bodies():
+		_on_attack_hit(body)
 
 func _stage_config(stage: int) -> Dictionary:
 	# Per-attack tuning. Rotation 0 = axe shaft straight up. Positive rot is
