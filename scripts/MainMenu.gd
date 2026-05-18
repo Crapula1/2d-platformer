@@ -95,8 +95,9 @@ func _build_multiplayer_panel() -> void:
 	name_edit.max_length = 16
 	vb.add_child(name_edit)
 
-	vb.add_child(_field_label("Host IP (Join only)"))
+	vb.add_child(_field_label("Host IP or address (Join only)"))
 	ip_edit = LineEdit.new()
+	ip_edit.placeholder_text = "127.0.0.1 or play.it.gg-style host"
 	ip_edit.text = "127.0.0.1"
 	ip_edit.text_changed.connect(func(_t: String) -> void: _user_typed_ip = true)
 	vb.add_child(ip_edit)
