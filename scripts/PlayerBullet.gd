@@ -15,7 +15,7 @@ func setup(direction: Vector2, speed: float, dmg: int) -> void:
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = 4  # layer 3 (Enemy) only — pass through world geometry
+	collision_mask = 5  # layer 1 (World) + layer 3 (Enemy)
 	body_entered.connect(_on_body_entered)
 
 func _physics_process(delta: float) -> void:
