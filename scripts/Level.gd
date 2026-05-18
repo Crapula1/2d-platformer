@@ -36,7 +36,7 @@ const SQUIRREL_SCENE         := preload("res://scenes/critters/Squirrel.tscn")
 const RABBIT_SCENE           := preload("res://scenes/critters/Rabbit.tscn")
 
 const LEVEL_LEFT:    float =    -20.0
-const LEVEL_RIGHT:   float =  6020.0
+const LEVEL_RIGHT:   float =  7520.0
 const LEVEL_TOP:     float =   -60.0
 const LEVEL_BOTTOM:  float =   820.0
 const GROUND_TOP:    float =   400.0
@@ -318,6 +318,7 @@ const GROUND_SPANS := [
 	Vector2(2370.0, 2510.0),
 	Vector2(2660.0, 3500.0),
 	Vector2(4500.0, 6000.0),
+	Vector2(7000.0, 7500.0),
 ]
 
 func _is_on_ground(x: float, margin: float = 24.0) -> bool:
@@ -1185,13 +1186,14 @@ func _build_section_g_mixed_challenge() -> void:
 	_add_soldier(5170.0, 375.0, 200.0)
 
 # -----------------------------------------------------------------------------
-# Section H — Final stretch (5200..6000): clear path, ceremonial visuals,
-# a powerup, an enemy cluster guarding the exit, and the exit door.
+# Section H — Final approach (5200..7500): arching reward platforms, then a
+# long ravine (6000..7000) with a jet-trooper mini-boss patrolling its middle,
+# then the final exit ground (7000..7500) with the door.
 # -----------------------------------------------------------------------------
 func _build_section_h_final_stretch() -> void:
 	_add_ground(5200.0, 6000.0)
 
-	# Arching reward platforms
+	# Arching reward platforms over the first stretch
 	_add_platform(5260.0, 320.0, 120.0)
 	_add_platform(5440.0, 260.0, 120.0)
 	_add_platform(5620.0, 320.0, 120.0)
@@ -1199,7 +1201,7 @@ func _build_section_h_final_stretch() -> void:
 	# Powerup midway
 	_add_powerup(5500.0, 230.0)
 
-	# Coins
+	# Coins over the arching platforms
 	_add_coin(5310.0, 290.0)
 	_add_coin(5490.0, 230.0)
 	_add_coin(5670.0, 290.0)
@@ -1208,27 +1210,78 @@ func _build_section_h_final_stretch() -> void:
 	_add_coin(5820.0, 374.0)
 	_add_coin(5860.0, 374.0)
 
-	# Background pipes lit toward exit
+	# Background pipes
 	_add_branch_h(5200.0, 80.0, 800.0)
-	_add_branch_v(5800.0, 80.0, 400.0)
 
-	# Arrow signs pointing toward the exit
+	# Arrow signs pointing toward the ravine
 	_add_arrow_sign(5320.0, 378.0)
 	_add_arrow_sign(5700.0, 378.0)
 
-	# Guard cluster at the exit — three soldiers, tighter patrols
+	# Guard cluster on the first stretch
 	_add_soldier(5320.0, 375.0, 220.0)
 	_add_soldier(5700.0, 375.0, 220.0)
 	_add_soldier(5840.0, 375.0, 140.0)
 
-	# Final grenade resupply right before the exit
+	# Grenade resupply before plunging into the ravine
 	_add_grenade_pickup(5780.0, 366.0, 0)
 
-	# Final mini-boss guarding the exit — heavier jet trooper.
-	_add_jet_trooper(5800.0, 200.0, 14)
+	# --- The ravine (6000..7000) -----------------------------------------------
+	# Long spike-floored gap traversed with moving platforms + a static island.
+	# A jet-trooper mini-boss patrols the airspace above its full width.
+	_add_spike_row(6020.0, 6980.0, GROUND_BOTTOM - 8.0)
+	_add_pit_depth(6020.0, 6980.0)
 
-	# Exit door
-	_add_exit(5900.0, 370.0)
+	# Extra darkness in the ravine for atmosphere
+	var darken := ColorRect.new()
+	darken.z_index = -2
+	darken.offset_left = 6020.0
+	darken.offset_top = 360.0
+	darken.offset_right = 6980.0
+	darken.offset_bottom = GROUND_BOTTOM
+	darken.color = Color(0.02, 0.03, 0.05, 0.40)
+	add_child(darken)
+
+	# Traversal platforms across the ravine
+	_add_moving_platform(6060.0, 370.0, 120.0)
+	_add_platform(6260.0, 300.0, 96.0)
+	_add_moving_platform(6420.0, 330.0, 120.0)
+	_add_platform(6600.0, 380.0, 96.0)
+	_add_moving_platform(6760.0, 320.0, 120.0)
+	_add_platform(6900.0, 380.0, 80.0)
+
+	# Two fire vents from the spike floor for added pressure
+	_add_fire_pulse(6340.0, GROUND_BOTTOM - 14.0, 6.0, 0.8)
+	_add_fire_pulse(6680.0, GROUND_BOTTOM - 14.0, 6.0, 3.4)
+
+	# Coin trail across the ravine
+	_add_coin(6108.0, 340.0)
+	_add_coin(6308.0, 270.0)
+	_add_coin(6480.0, 300.0)
+	_add_coin(6648.0, 350.0)
+	_add_coin(6820.0, 290.0)
+	_add_coin(6940.0, 350.0)
+	_add_coin_arc(6480.0, 220.0, 5, 110.0)
+
+	# Hanging pipe spanning the ravine
+	_add_branch_h(6020.0, 60.0, 960.0)
+
+	# Mini jet-trooper boss patrolling the full ravine airspace.
+	_add_jet_trooper(6500.0, 180.0, 14, 880.0, 120.0)
+
+	# --- Final exit ground (7000..7500) ----------------------------------------
+	_add_ground(7000.0, 7500.0)
+
+	# Pillar / pipe leading the eye to the exit door
+	_add_branch_v(7400.0, 80.0, 400.0)
+
+	# Last arrow sign + a coin pickup just before the door
+	_add_arrow_sign(7140.0, 378.0)
+	_add_coin(7220.0, 374.0)
+	_add_coin(7260.0, 374.0)
+	_add_coin(7300.0, 374.0)
+
+	# Exit door pushed to the end of the extended level
+	_add_exit(7400.0, 370.0)
 
 # -----------------------------------------------------------------------------
 # Camera limits — Player.tscn ships with limit_right = 2400, which is too tight
