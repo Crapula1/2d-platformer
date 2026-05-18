@@ -584,7 +584,7 @@ func _start_attack(stage: int) -> void:
 	if absf(aim.x) > 0.05:
 		facing_right = aim.x >= 0.0
 		_set_facing(facing_right)
-	var reach: float = 44.0 if stage == 3 else 36.0
+	var reach: float = 36.0 if stage == 3 else 28.0
 	attack_area.position = aim * reach
 	attack_area.rotation = aim.angle()
 
