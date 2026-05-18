@@ -411,7 +411,7 @@ func _build_platforms_climb(room_idx: int, offset: Vector2, _depth: int, theme: 
 	return plats
 
 # Combat showdown — central elevated platform guarded by enemies
-func _build_platforms_arena(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
+func _build_platforms_arena(_room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
 	var plats: Array = []
 	var bc: Color = theme["plat"]
 	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
