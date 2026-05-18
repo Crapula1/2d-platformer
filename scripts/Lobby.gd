@@ -311,10 +311,10 @@ func _tile_style(accent: Color, selected: bool) -> StyleBoxFlat:
 	return sb
 
 func _refresh_tile_selection() -> void:
-	for c in char_tiles.keys():
+	for c: String in char_tiles.keys():
 		var entry: Dictionary = char_tiles[c]
 		var panel := entry["panel"] as PanelContainer
-		var selected := (c == Net.local_character)
+		var selected: bool = (c == Net.local_character)
 		panel.add_theme_stylebox_override("panel", _tile_style(entry["accent"], selected))
 
 func _select_character(character: String) -> void:
