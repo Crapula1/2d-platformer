@@ -86,7 +86,9 @@ func _ready() -> void:
 		exit_node.exited.connect(_on_level_exit)
 
 	message_label.text = ""
-	hint_label.text = "WASD: Move  |  Space: Jump  |  RClick: Shoot  |  1/2: Weapon  |  J/LClick: Bash  |  G: Grenade  |  Q: Cycle  |  R: Restart  |  Esc: Menu"
+	# Control hints live in the Controls menu (Esc → Controls). Keep the HUD clean.
+	hint_label.text = ""
+	hint_label.visible = false
 
 func _setup_singleplayer() -> void:
 	# Level.tscn already contains the Player as a direct child.

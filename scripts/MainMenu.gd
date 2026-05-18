@@ -5,6 +5,7 @@ extends Control
 
 const GAME_SCENE := "res://scenes/Main.tscn"
 const OPTIONS_SCENE := "res://scenes/OptionsMenu.tscn"
+const CONTROLS_SCENE := "res://scenes/ControlsMenu.tscn"
 const LOBBY_SCENE := "res://scenes/Lobby.tscn"
 
 @onready var center: CenterContainer = $Center
@@ -30,6 +31,7 @@ func _ready() -> void:
 	options_button.pressed.connect(_on_options)
 	quit_button.pressed.connect(_on_quit)
 	_insert_multiplayer_button()
+	_insert_controls_button()
 	_build_multiplayer_panel()
 	start_button.grab_focus()
 	Net.connection_failed.connect(_on_connection_failed)
@@ -49,6 +51,20 @@ func _insert_multiplayer_button() -> void:
 	vbox.add_child(mp_button)
 	# Slot it just under START so the order reads Start / MP / Options / Quit.
 	vbox.move_child(mp_button, 1)
+
+func _insert_controls_button() -> void:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(140, 26)
+	btn.text = "CONTROLS"
+	btn.add_theme_font_size_override("font_size", 14)
+	btn.pressed.connect(_on_controls)
+	vbox.add_child(btn)
+	# Place right above OPTIONS for a clean Start / MP / Controls / Options / Quit list.
+	var options_idx := options_button.get_index()
+	vbox.move_child(btn, options_idx)
+
+func _on_controls() -> void:
+	get_tree().change_scene_to_file(CONTROLS_SCENE)
 
 func _build_multiplayer_panel() -> void:
 	# Put the panel inside its own CenterContainer so it stays centered on
