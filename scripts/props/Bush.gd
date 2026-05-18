@@ -36,7 +36,7 @@ func _build_clump(rng: RandomNumberGenerator) -> void:
 	_blob(Vector2( foliage_size * 0.20, -foliage_size * 0.5), foliage_size * 0.7, foliage_size * 0.50, color_base, rng)
 	_blob(Vector2(0.0, -foliage_size * 0.65), foliage_size * 0.35, foliage_size * 0.25, color_hi, rng)
 
-func _build_fern(rng: RandomNumberGenerator) -> void:
+func _build_fern(_rng: RandomNumberGenerator) -> void:
 	var leaves: int = 5
 	for i in leaves:
 		var t: float = float(i) / float(leaves - 1)
