@@ -935,7 +935,7 @@ func _update_sprite(delta: float) -> void:
 	if is_attacking and _axe != null:
 		var cfg: Dictionary = _stage_config(attack_stage)
 		var dur: float = float(cfg["duration"])
-		var t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
+		var swing_t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
 		var r_start: float = float(cfg["rot_start"])
 		var r_end:   float = float(cfg["rot_end"])
 		var th_start: float = float(cfg["thrust_start"])
@@ -947,13 +947,13 @@ func _update_sprite(delta: float) -> void:
 		const WINDUP: float = 0.28
 		var rot_now: float
 		var thrust_now: float
-		if t < WINDUP and attack_stage != 3:
-			var u: float = t / WINDUP
+		if swing_t < WINDUP and attack_stage != 3:
+			var u: float = swing_t / WINDUP
 			var ue: float = u * u * (3.0 - 2.0 * u)   # smoothstep
 			rot_now = lerpf(_attack_swing_origin_rot, r_start, ue)
 			thrust_now = lerpf(_attack_swing_origin_thrust, th_start, ue)
 		else:
-			var u2: float = clampf((t - WINDUP) / (1.0 - WINDUP), 0.0, 1.0) if attack_stage != 3 else t
+			var u2: float = clampf((swing_t - WINDUP) / (1.0 - WINDUP), 0.0, 1.0) if attack_stage != 3 else swing_t
 			var ue2: float = 1.0 - pow(1.0 - u2, 3.0)
 			rot_now = lerpf(r_start, r_end, ue2)
 			thrust_now = lerpf(th_start, th_end, ue2)
@@ -996,16 +996,16 @@ func _update_sprite(delta: float) -> void:
 			lean_amount = 0.25
 		elif attack_stage == 3:
 			lean_amount = 0.05
-		var lean_t: float = clampf((t - 0.30) / 0.50, 0.0, 1.0)
-		var lean_decay: float = clampf((t - 0.80) / 0.20, 0.0, 1.0)
+		var lean_t: float = clampf((swing_t - 0.30) / 0.50, 0.0, 1.0)
+		var lean_decay: float = clampf((swing_t - 0.80) / 0.20, 0.0, 1.0)
 		var lean_now: float = lean_amount * lean_t * (1.0 - lean_decay * 0.6) * face_dir
 		sprite.rotation = lerpf(sprite.rotation, lean_now, minf(delta * 26.0, 1.0))
 
 		# Stab step-forward: shift the sprite slightly in facing direction
 		var step_offset: float = 0.0
 		if attack_stage == 3:
-			var step_t: float = clampf((t - 0.15) / 0.45, 0.0, 1.0)
-			var step_back: float = clampf((t - 0.70) / 0.30, 0.0, 1.0)
+			var step_t: float = clampf((swing_t - 0.15) / 0.45, 0.0, 1.0)
+			var step_back: float = clampf((swing_t - 0.70) / 0.30, 0.0, 1.0)
 			step_offset = 3.0 * step_t * (1.0 - step_back)
 		sprite.position.x = lerpf(sprite.position.x, step_offset * face_dir, minf(delta * 26.0, 1.0))
 	else:
