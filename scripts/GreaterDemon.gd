@@ -94,10 +94,10 @@ var _hit_this_swing: bool = false
 @onready var alert_indicator: Node2D = $AlertIndicator
 @onready var sight_ray: RayCast2D = $SightRay
 
-const SWORD_POLY := PackedVector2Array(
+const SWORD_POLY := PackedVector2Array([
 	Vector2(0, -3), Vector2(10, -5), Vector2(24, -6), Vector2(40, -4),
-	Vector2(50, 0), Vector2(40, 4), Vector2(24, 4), Vector2(10, 2), Vector2(0, 3)
-)
+	Vector2(50, 0), Vector2(40, 4), Vector2(24, 4), Vector2(10, 2), Vector2(0, 3),
+])
 
 func _ready() -> void:
 	current_health = max_health
