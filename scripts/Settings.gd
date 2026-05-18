@@ -82,7 +82,7 @@ func apply() -> void:
 
 	var root := get_tree().root if is_inside_tree() else null
 	if root != null:
-		root.msaa_2d = MSAA_VALUES[msaa_index]
+		root.msaa_2d = MSAA_VALUES[msaa_index] as Viewport.MSAA
 
 	Engine.max_fps = FPS_VALUES[fps_index]
 
