@@ -101,4 +101,5 @@ func _center_window() -> void:
 	var screen_size := DisplayServer.screen_get_size(screen)
 	var screen_pos := DisplayServer.screen_get_position(screen)
 	var win_size := DisplayServer.window_get_size()
+	@warning_ignore("integer_division")
 	DisplayServer.window_set_position(screen_pos + (screen_size - win_size) / 2)
