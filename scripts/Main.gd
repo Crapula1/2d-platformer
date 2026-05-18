@@ -120,6 +120,7 @@ func _scene_path_for_character(character_id: String) -> String:
 	match character_id:
 		"demon":         return "res://scenes/PlayerDemon.tscn"
 		"greater_demon": return "res://scenes/PlayerGreaterDemon.tscn"
+		"squirrel":      return "res://scenes/Player4.tscn"
 		_:               return "res://scenes/Player.tscn"
 
 func _setup_multiplayer() -> void:

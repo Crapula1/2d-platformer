@@ -26,6 +26,12 @@ const CHARACTERS: Array[Dictionary] = [
 		"desc": "Heavy demonic warlord. Caped, twin\nhorn pairs, claws — armored melee.",
 		"tint": Color(1.0, 0.55, 0.15),
 	},
+	{
+		"id": "squirrel",
+		"name": "SQUIRREL",
+		"desc": "Humanoid squirrel with animated\nidle / walk / run / crouch / slide /\nslash / stab frames.",
+		"tint": Color(0.85, 0.55, 0.22),
+	},
 ]
 
 var _selected_character: int = 0
@@ -102,8 +108,8 @@ func _build() -> void:
 		var c: Dictionary = CHARACTERS[i]
 		var btn := Button.new()
 		btn.text = String(c["name"])
-		btn.custom_minimum_size = Vector2(160, 56)
-		btn.add_theme_font_size_override("font_size", 18)
+		btn.custom_minimum_size = Vector2(118, 56)
+		btn.add_theme_font_size_override("font_size", 13)
 		btn.toggle_mode = true
 		btn.pressed.connect(_on_character_picked.bind(i))
 		char_row.add_child(btn)
