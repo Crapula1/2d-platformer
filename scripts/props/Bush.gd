@@ -58,7 +58,7 @@ func _build_fern(_rng: RandomNumberGenerator) -> void:
 		])
 		add_child(leaf)
 
-func _blob(center: Vector2, rx: float, ry: float, c: Color, rng: RandomNumberGenerator) -> void:
+func _blob(center: Vector2, rx: float, ry: float, c: Color, _rng: RandomNumberGenerator) -> void:
 	var blob := Polygon2D.new()
 	blob.color = c
 	var pts := PackedVector2Array()
