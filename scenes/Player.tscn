@@ -138,9 +138,9 @@ zoom = Vector2(1.1, 1.1)
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 limit_left = -50
-limit_top = -300
-limit_right = 2400
-limit_bottom = 600
+limit_top = -400
+limit_right = 10000
+limit_bottom = 900
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("ReplConfig_player")
