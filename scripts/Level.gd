@@ -1303,7 +1303,7 @@ func _setup_player_camera() -> void:
 	cam.position_smoothing_enabled = false
 	cam.drag_horizontal_enabled = false
 	cam.drag_vertical_enabled = false
-	cam.zoom = Vector2.ONE
+	cam.zoom = Vector2(1.5, 1.5)
 
 # -----------------------------------------------------------------------------
 # Atmospheric critters — purely cosmetic squirrels & rabbits.
