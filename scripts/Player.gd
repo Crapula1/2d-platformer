@@ -573,8 +573,20 @@ func _start_attack(stage: int) -> void:
 	var cfg: Dictionary = _stage_config(stage)
 	attack_timer = float(cfg["duration"])
 	attack_shape.disabled = false
-	var reach: float = 28.0 if stage == 3 else 20.0
-	attack_area.position.x = reach if facing_right else -reach
+
+	# Aim the swing toward the mouse cursor. Horizontal facing snaps to the
+	# aim direction (so the visible swing goes the same way), and the hitbox
+	# is offset along the full aim vector so up/down strikes connect with
+	# enemies above or below the player too.
+	var aim_vec: Vector2 = get_global_mouse_position() - global_position
+	var aim: Vector2 = aim_vec.normalized() if aim_vec.length_squared() > 0.0001 \
+		else Vector2(1.0 if facing_right else -1.0, 0.0)
+	if absf(aim.x) > 0.05:
+		facing_right = aim.x >= 0.0
+		_set_facing(facing_right)
+	var reach: float = 44.0 if stage == 3 else 36.0
+	attack_area.position = aim * reach
+	attack_area.rotation = aim.angle()
 
 	# Start of a new swing — reset the per-swing hit list and catch anyone
 	# already standing inside the freshly-enabled hitbox (body_entered only
