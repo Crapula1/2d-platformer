@@ -1,6 +1,11 @@
 [gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/Player.gd" id="1_player"]
+[ext_resource type="Texture2D" path="res://assets/sprites/frames/idle_0.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_0.png" id="3_walk0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_1.png" id="4_walk1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_2.png" id="5_walk2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_3.png" id="6_walk3"]
 
 [sub_resource type="SceneReplicationConfig" id="ReplConfig_player"]
 properties/0/path = NodePath(".:position")
@@ -48,11 +53,6 @@ properties/13/replication_mode = 2
 properties/14/path = NodePath(".:is_rolling")
 properties/14/spawn = true
 properties/14/replication_mode = 2
-[ext_resource type="Texture2D" path="res://assets/sprites/frames/idle_0.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_0.png" id="3_walk0"]
-[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_1.png" id="4_walk1"]
-[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_2.png" id="5_walk2"]
-[ext_resource type="Texture2D" path="res://assets/sprites/frames/walk_3.png" id="6_walk3"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(20, 28)
