@@ -33,8 +33,59 @@ var speed_mult: float = 1.0
 var grenade_cd_mult: float = 1.0
 var invincibility_bonus: float = 0.0
 
+# Per-character tuning. max_health is the absolute starting HP cap
+# *before* difficulty scaling. speed/jump/attack mults stack on top of
+# the Player.gd defaults. allowed_weapons is the set of weapon IDs the
+# character can actually fire (others stay locked).
+const CHARACTER_STATS: Dictionary = {
+	"marine": {
+		"display_name": "MARINE",
+		"tint": Color(0.35, 0.85, 1.0),
+		"max_health": 10,
+		"speed_mult": 1.0,
+		"jump_mult": 1.0,
+		"attack_mult": 1.0,
+		"max_jumps": 2,
+		"jetpack_duration": 3.0,
+		"allowed_weapons": ["rifle", "shotgun"],
+	},
+	"demon": {
+		"display_name": "DEMON",
+		"tint": Color(0.95, 0.30, 0.30),
+		"max_health": 8,
+		"speed_mult": 1.15,
+		"jump_mult": 1.05,
+		"attack_mult": 1.10,
+		"max_jumps": 2,
+		"jetpack_duration": 2.5,
+		"allowed_weapons": ["melee"],
+	},
+	"greater_demon": {
+		"display_name": "GREATER DEMON",
+		"tint": Color(1.0, 0.55, 0.15),
+		"max_health": 14,
+		"speed_mult": 0.85,
+		"jump_mult": 0.90,
+		"attack_mult": 1.40,
+		"max_jumps": 1,
+		"jetpack_duration": 2.0,
+		"allowed_weapons": ["melee"],
+	},
+	"squirrel": {
+		"display_name": "SQUIRREL",
+		"tint": Color(0.85, 0.55, 0.22),
+		"max_health": 7,
+		"speed_mult": 1.25,
+		"jump_mult": 1.15,
+		"attack_mult": 0.90,
+		"max_jumps": 3,
+		"jetpack_duration": 2.5,
+		"allowed_weapons": ["melee"],
+	},
+}
+
 # Run-wide selections set on the character-select screen.
-var character: String = "marine"  # "marine" or "demon"
+var character: String = "marine"  # see CHARACTER_STATS keys
 var difficulty: int = DIFF_MEDIUM
 var player_max_hp_mult: float = 1.0
 var enemy_hp_mult: float = 1.0
@@ -49,6 +100,9 @@ func load_prefs() -> void:
 		return
 	character = String(cfg.get_value("run", "character", character))
 	set_difficulty(int(cfg.get_value("run", "difficulty", difficulty)))
+
+func get_character_stats() -> Dictionary:
+	return CHARACTER_STATS.get(character, CHARACTER_STATS["marine"])
 
 func save_prefs() -> void:
 	var cfg := ConfigFile.new()

@@ -89,6 +89,7 @@ func _ready() -> void:
 	# Control hints live in the Controls menu (Esc → Controls). Keep the HUD clean.
 	hint_label.text = ""
 	hint_label.visible = false
+	_build_character_card()
 
 func _setup_singleplayer() -> void:
 	# Level.tscn no longer ships an embedded Player — we always spawn the
@@ -136,6 +137,59 @@ func _setup_singleplayer() -> void:
 		RunState.apply_to_player(player)
 	spawn_position = player.global_position
 	_wire_hud_to_player(player)
+
+func _build_character_card() -> void:
+	# Top-left HUD chip: tint stripe, optional portrait, character name.
+	# Portrait image is optional — if res://assets/portraits/<id>.png isn't
+	# present the TextureRect just stays hidden and the name + chip carry
+	# the identification on their own.
+	var stats: Dictionary = RunState.get_character_stats()
+	var hud: CanvasLayer = $HUD
+	var card := PanelContainer.new()
+	card.name = "CharacterCard"
+	card.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	card.offset_left = 8.0
+	card.offset_top = 8.0
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(card)
+
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.07, 0.10, 0.92)
+	sb.border_width_left = 4
+	sb.border_color = Color(stats.get("tint", Color.WHITE))
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.corner_radius_bottom_right = 4
+	sb.content_margin_left = 8
+	sb.content_margin_right = 10
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	card.add_theme_stylebox_override("panel", sb)
+
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	card.add_child(hb)
+
+	var portrait := TextureRect.new()
+	portrait.custom_minimum_size = Vector2(36, 36)
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	var portrait_path := "res://assets/portraits/%s.png" % RunState.character
+	if ResourceLoader.exists(portrait_path):
+		portrait.texture = load(portrait_path) as Texture2D
+	else:
+		portrait.visible = false
+	hb.add_child(portrait)
+
+	var name_label := Label.new()
+	name_label.text = String(stats.get("display_name", RunState.character.to_upper()))
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color(stats.get("tint", Color.WHITE)))
+	name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	name_label.add_theme_constant_override("outline_size", 4)
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hb.add_child(name_label)
 
 func _flash_spawned_character_banner(character_id: String, scene_path: String) -> void:
 	# Diagnostic: a 2-second banner on the HUD shows which character + scene
@@ -203,7 +257,7 @@ func _wire_hud_to_player(p: Player) -> void:
 	_on_score_changed(player.score)
 	_on_grenade_changed(Player.GRENADE_NAMES[player.grenade_type], player.grenade_count)
 	_on_jetpack_changed(player._jetpack_fuel, player.jetpack_duration)
-	_on_weapon_changed(Player.WEAPON_NAMES[player.weapon])
+	_on_weapon_changed(player.current_weapon_label())
 	_on_shotgun_shells_changed(player._shotgun_shells, player.shotgun_capacity)
 
 func _find_spawn_position() -> Vector2:

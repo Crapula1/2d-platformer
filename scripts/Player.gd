@@ -176,10 +176,12 @@ var _facing_node: Node2D = null
 @onready var hurtbox: Area2D = $Hurtbox
 
 func _ready() -> void:
-	# Apply difficulty scaling to the starting HP cap before the rest of the
-	# init reads max_health. RunState autoload is always present.
-	if RunState != null and RunState.player_max_hp_mult != 1.0:
-		max_health = maxi(int(round(float(max_health) * RunState.player_max_hp_mult)), 1)
+	# Apply per-character tuning first (HP, speed, jump, attack, weapons),
+	# then layer difficulty scaling on top of the character's HP cap.
+	if RunState != null:
+		_apply_character_stats(RunState.get_character_stats())
+		if RunState.player_max_hp_mult != 1.0:
+			max_health = maxi(int(round(float(max_health) * RunState.player_max_hp_mult)), 1)
 	current_health = max_health
 	jumps_remaining = max_jumps
 	attack_shape.disabled = true
@@ -204,7 +206,7 @@ func _ready() -> void:
 	grenade_changed.emit(GRENADE_NAMES[grenade_type], grenade_count)
 	jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 	_shotgun_shells = shotgun_capacity
-	weapon_changed.emit(WEAPON_NAMES[weapon])
+	weapon_changed.emit(current_weapon_label())
 	shotgun_shells_changed.emit(_shotgun_shells, shotgun_capacity)
 	_cam = get_node_or_null("Camera2D") as Camera2D
 	if _cam != null:
@@ -509,12 +511,14 @@ func _handle_jump_logic() -> void:
 			jumps_remaining = max_jumps - 1
 			jump_buffer_timer = 0
 			coyote_timer = 0
+			play_voice(&"jump")
 		elif jumps_remaining > 0:
 			velocity.y = double_jump_velocity
 			jumps_remaining -= 1
 			jump_buffer_timer = 0
 			_spawn_double_jump_effect()
 			_jetpack_armed = true
+			play_voice(&"jump")
 
 func _handle_grenade_input() -> void:
 	if Input.is_action_just_pressed("cycle_grenade"):
@@ -937,6 +941,8 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	_apply_shake(5.0)
 	if current_health <= 0:
 		_die()
+	else:
+		play_voice(&"hurt")
 
 func _die() -> void:
 	is_dead = true
@@ -944,7 +950,67 @@ func _die() -> void:
 		_anim_sprite.stop()
 	sprite.modulate = Color(0.5, 0.5, 0.5)
 	_apply_shake(12.0)
+	play_voice(&"die")
 	died.emit()
+
+var _allowed_weapons: PackedStringArray = PackedStringArray(["rifle", "shotgun"])
+var _voice_player: AudioStreamPlayer = null
+var _voice_cache: Dictionary = {}
+
+func _apply_character_stats(stats: Dictionary) -> void:
+	max_health = int(stats.get("max_health", max_health))
+	speed *= float(stats.get("speed_mult", 1.0))
+	var jm: float = float(stats.get("jump_mult", 1.0))
+	jump_velocity *= jm
+	double_jump_velocity *= jm
+	wall_jump_vel_y *= jm
+	attack_damage = maxi(int(round(float(attack_damage) * float(stats.get("attack_mult", 1.0)))), 1)
+	bullet_damage = maxi(int(round(float(bullet_damage) * float(stats.get("attack_mult", 1.0)))), 1)
+	max_jumps = int(stats.get("max_jumps", max_jumps))
+	jetpack_duration = float(stats.get("jetpack_duration", jetpack_duration))
+	_jetpack_fuel = jetpack_duration
+	var allowed: Array = stats.get("allowed_weapons", ["rifle", "shotgun"])
+	_allowed_weapons = PackedStringArray()
+	for w in allowed:
+		_allowed_weapons.append(String(w))
+	# If the starting weapon isn't allowed, drop to the first allowed gun
+	# (or RIFLE as a harmless default for melee-only characters — shoot
+	# input is gated on can_shoot() below).
+	if not can_use_weapon(WEAPON_NAMES[weapon].to_lower()):
+		var idx: int = WEAPON_NAMES.find("RIFLE")
+		weapon = idx if idx >= 0 else 0
+
+func can_use_weapon(weapon_id: String) -> bool:
+	return _allowed_weapons.has(weapon_id)
+
+func can_shoot() -> bool:
+	# Melee-only characters never fire bullets even if weapon == RIFLE.
+	return can_use_weapon("rifle") or can_use_weapon("shotgun")
+
+func current_weapon_label() -> String:
+	if not can_shoot():
+		return "MELEE"
+	return WEAPON_NAMES[weapon]
+
+func play_voice(event: StringName) -> void:
+	if RunState == null:
+		return
+	var key := "%s/%s" % [RunState.character, String(event)]
+	var stream: AudioStream = null
+	if _voice_cache.has(key):
+		stream = _voice_cache[key]
+	else:
+		var path := "res://assets/voice/%s/%s.ogg" % [RunState.character, String(event)]
+		if ResourceLoader.exists(path):
+			stream = load(path) as AudioStream
+		_voice_cache[key] = stream  # cache nulls too, so we don't retry every frame
+	if stream == null:
+		return
+	if _voice_player == null:
+		_voice_player = AudioStreamPlayer.new()
+		add_child(_voice_player)
+	_voice_player.stream = stream
+	_voice_player.play()
 
 func _apply_shake(amount: float) -> void:
 	_shake_amount = maxf(_shake_amount, amount)
@@ -1110,6 +1176,8 @@ func _play_anim(anim_name: StringName) -> void:
 func _handle_shoot_input() -> void:
 	if is_dead:
 		return
+	if not can_shoot():
+		return
 	if Input.is_action_just_pressed("select_rifle"):
 		_set_weapon(Weapon.RIFLE)
 	elif Input.is_action_just_pressed("select_shotgun"):
@@ -1124,8 +1192,10 @@ func _handle_shoot_input() -> void:
 func _set_weapon(new_weapon: int) -> void:
 	if new_weapon == weapon:
 		return
+	if not can_use_weapon(WEAPON_NAMES[new_weapon].to_lower()):
+		return
 	weapon = new_weapon
-	weapon_changed.emit(WEAPON_NAMES[weapon])
+	weapon_changed.emit(current_weapon_label())
 	# Holstering doesn't unload — but if shells were depleted, give a small
 	# delay before they can be used on the swap-back so spamming Tab can't
 	# bypass the reload.
