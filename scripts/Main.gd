@@ -123,9 +123,13 @@ func _setup_singleplayer() -> void:
 	new_p.name = "Player"
 	_level.add_child(new_p)
 	new_p.global_position = spawn_xy
-	print("[Main] Spawned character=%s scene=%s at %s" % [
-		RunState.character, scene_path, str(spawn_xy)])
-	_flash_spawned_character_banner(RunState.character, scene_path)
+	var script_name: String = ""
+	var scr := new_p.get_script() as Script
+	if scr != null:
+		script_name = scr.resource_path
+	print("[Main] Spawned character=%s scene=%s script=%s at %s" % [
+		RunState.character, scene_path, script_name, str(spawn_xy)])
+	_flash_spawned_character_banner(RunState.character, scene_path + "\nscript=" + script_name)
 
 	# Camera limits must be applied after the player is in the tree so the
 	# Camera2D node exists and is current.
@@ -210,10 +214,8 @@ func _flash_spawned_character_banner(character_id: String, scene_path: String) -
 	label.offset_top = 70.0
 	label.offset_bottom = 130.0
 	overlay.add_child(label)
-	get_tree().create_timer(3.0).timeout.connect(func() -> void:
-		if is_instance_valid(overlay):
-			overlay.queue_free()
-	)
+	# Sticky for debugging — caller queue_frees the overlay manually if/when
+	# the diagnostic is no longer needed.
 
 func _scene_path_for_character(character_id: String) -> String:
 	# Single source of truth is RunState.CHARACTER_STATS[id].scene. Falling
