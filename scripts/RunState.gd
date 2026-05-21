@@ -1,5 +1,7 @@
 extends Node
 
+const PREFS_PATH := "user://run_prefs.cfg"
+
 # Difficulty tiers — index into DIFFICULTY_TABLE.
 const DIFF_EASY := 0
 const DIFF_MEDIUM := 1
@@ -37,6 +39,22 @@ var difficulty: int = DIFF_MEDIUM
 var player_max_hp_mult: float = 1.0
 var enemy_hp_mult: float = 1.0
 var enemy_speed_mult: float = 1.0
+
+func _ready() -> void:
+	load_prefs()
+
+func load_prefs() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(PREFS_PATH) != OK:
+		return
+	character = String(cfg.get_value("run", "character", character))
+	set_difficulty(int(cfg.get_value("run", "difficulty", difficulty)))
+
+func save_prefs() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("run", "character", character)
+	cfg.set_value("run", "difficulty", difficulty)
+	cfg.save(PREFS_PATH)
 
 func start_new_run() -> void:
 	is_run_active = true

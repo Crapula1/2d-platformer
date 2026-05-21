@@ -202,5 +202,6 @@ func _on_back() -> void:
 func _on_start() -> void:
 	RunState.character = String(CHARACTERS[_selected_character]["id"])
 	RunState.set_difficulty(_selected_difficulty)
+	RunState.save_prefs()
 	RunState.start_new_run()
 	get_tree().change_scene_to_file(GAME_SCENE)
