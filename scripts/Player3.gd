@@ -1,6 +1,10 @@
 extends Player
-class_name Player3
+class_name GreaterDemon
 
-# Greater Demon avatar controller. Inherits the full Player moveset for
-# now; any greater-demon-specific behavior (heavier swings, slower jump,
-# cleave variant, etc.) goes here so it doesn't pollute the Marine script.
+# Greater Demon avatar controller. Heavy melee — cape + twin horns + claws
+# are part of PlayerGreaterDemon.tscn. Reduced max_jumps and slower
+# jump_mult come from the CHARACTER_STATS dict applied by the base
+# Player._apply_character_stats; no extra rig is built here.
+
+func get_character_id() -> String:
+	return "greater_demon"

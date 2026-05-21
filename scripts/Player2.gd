@@ -1,6 +1,10 @@
 extends Player
-class_name Player2
+class_name Demon
 
-# Demon avatar controller. Inherits the full Player moveset for now; any
-# demon-specific behavior (different melee timing, no rifle, alt jump, etc.)
-# goes here so it doesn't pollute the Marine script.
+# Demon avatar controller. Owns the demon's identity; visuals are baked
+# into PlayerDemon.tscn (polygon body / horns / wings). No weapon rig is
+# built — the demon is a melee-only brawler, attacks resolve through the
+# inherited attack_area hitbox without a visible axe.
+
+func get_character_id() -> String:
+	return "demon"

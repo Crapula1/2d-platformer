@@ -41,14 +41,9 @@ const ATTACK_STAGE_NAMES := ["IDLE", "CLEAVE", "SMASH", "STAB"]
 var attack_stage: int = 0
 var _combo_window_timer: float = 0.0
 var _attack_buffered: bool = false
-var _axe: Node2D
-var _axe_pivot: Node2D
-var _arm_front: Line2D
-var _arm_back: Line2D
-var _hand_front: ColorRect
-var _hand_back: ColorRect
-var _attack_swing_origin_rot: float = 0.0
-var _attack_swing_origin_thrust: float = 0.0
+# Per-character visual rigs (axe, claws, flames, etc) live in the
+# subclass — see Player1.gd (Marine), Player2.gd (Demon), etc. Base
+# Player.gd just exposes virtual hooks for them.
 
 # Slide
 @export var slide_speed: float = 270.0
@@ -135,7 +130,6 @@ var _roll_dir: float = 1.0
 var _jetpack_armed: bool = false
 var _jetpack_fuel: float = 0.0
 var _is_jetpacking: bool = false
-var _jet_flame: Polygon2D
 var _cam: Camera2D
 var _shake_amount: float = 0.0
 var _shake_decay: float = 12.0
@@ -178,8 +172,13 @@ var _facing_node: Node2D = null
 func _ready() -> void:
 	# Apply per-character tuning first (HP, speed, jump, attack, weapons),
 	# then layer difficulty scaling on top of the character's HP cap.
+	# Stats are looked up by the subclass's own get_character_id() — in
+	# multiplayer, RunState.character on the host machine is only the
+	# host's pick, so peers must key off their own identity instead.
 	if RunState != null:
-		_apply_character_stats(RunState.get_character_stats())
+		var char_id := get_character_id()
+		var stats: Dictionary = RunState.CHARACTER_STATS.get(char_id, RunState.get_character_stats())
+		_apply_character_stats(stats)
 		if RunState.player_max_hp_mult != 1.0:
 			max_health = maxi(int(round(float(max_health) * RunState.player_max_hp_mult)), 1)
 	current_health = max_health
@@ -214,19 +213,9 @@ func _ready() -> void:
 			_cam.make_current()
 		else:
 			_cam.enabled = false
-	_jet_flame = Polygon2D.new()
-	_jet_flame.color = Color(1.0, 0.55, 0.12, 0.95)
-	_jet_flame.polygon = PackedVector2Array([
-		Vector2(-5.0, 8.0), Vector2(5.0, 8.0),
-		Vector2(3.0, 18.0), Vector2(0.0, 26.0), Vector2(-3.0, 18.0)
-	])
-	_jet_flame.z_index = -1
-	_jet_flame.visible = false
-	add_child(_jet_flame)
-	# The axe rig is sized for the marine sprite; skip it for other avatars
-	# until they get their own weapon visuals.
-	if _anim_sprite != null:
-		_build_axe()
+	# Hand off to the subclass for its character-specific rig (axe, claws,
+	# jet flame, etc). Base class builds nothing on its own.
+	_build_character_visuals()
 
 func _physics_process(delta: float) -> void:
 	if not _is_local_authority():
@@ -352,15 +341,14 @@ func _handle_jetpack(delta: float) -> void:
 		velocity.y = maxf(velocity.y, jetpack_max_up)
 		_jetpack_fuel = maxf(_jetpack_fuel - delta, 0.0)
 		_is_jetpacking = true
-		_jet_flame.visible = true
-		_jet_flame.scale = Vector2(1.0, 0.85 + 0.3 * sin(Time.get_ticks_msec() * 0.04))
+		_update_jetpack_visual(true)
 		jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 		_apply_shake(0.6)
 	else:
 		if _is_jetpacking:
 			jetpack_changed.emit(_jetpack_fuel, jetpack_duration)
 		_is_jetpacking = false
-		_jet_flame.visible = false
+		_update_jetpack_visual(false)
 
 func _handle_jump_input() -> void:
 	if Input.is_action_just_pressed("jump"):
@@ -575,11 +563,7 @@ func _start_attack(stage: int) -> void:
 	_slide_bash = is_sliding
 	if is_sliding:
 		_end_slide()
-	# Polygon-based avatars (demon, greater demon) skip _build_axe, so the
-	# axe/arm rig is null. The attack still resolves through attack_area,
-	# we just have nothing to pose.
-	var has_axe_rig: bool = _axe != null
-	var chaining: bool = has_axe_rig and _axe.visible
+	var chaining: bool = _is_attack_chaining()
 	attack_stage = stage
 	is_attacking = true
 	var cfg: Dictionary = _stage_config(stage)
@@ -612,25 +596,9 @@ func _start_attack(stage: int) -> void:
 	tint.a = sprite.modulate.a
 	sprite.modulate = tint
 
-	# Anchor the axe at the marine's front hand. The first phase of each
-	# attack eases from the swing's origin pose to rot_start (the windup),
-	# the second phase eases through to rot_end (the strike).
-	if has_axe_rig:
-		if chaining:
-			_attack_swing_origin_rot = _axe_pivot.rotation
-			_attack_swing_origin_thrust = _axe_pivot.position.x
-		else:
-			# Fresh attack: drop in already at rot_start so there's no jump.
-			_attack_swing_origin_rot = float(cfg["rot_start"])
-			_attack_swing_origin_thrust = float(cfg["thrust_start"])
-			_axe_pivot.rotation = _attack_swing_origin_rot
-			_axe_pivot.position = Vector2(_attack_swing_origin_thrust, 0.0)
-
-		_axe.visible = true
-		_arm_front.visible = true
-		_arm_back.visible = true
-		_hand_front.visible = true
-		_hand_back.visible = true
+	# Hand off to the subclass for any per-character rig pose work (marine
+	# anchors the axe + arms here; demon / squirrel have nothing to do).
+	_on_attack_start(stage, chaining, cfg)
 
 func _end_attack() -> void:
 	is_attacking = false
@@ -646,13 +614,8 @@ func _end_attack() -> void:
 	# pulls the trigger again within it, they continue the combo.
 	_attack_buffered = false
 	_combo_window_timer = combo_window
-	# Hide the axe + arms between swings (marine only — others skip the rig)
-	if _axe != null:
-		_axe.visible = false
-		_arm_front.visible = false
-		_arm_back.visible = false
-		_hand_front.visible = false
-		_hand_back.visible = false
+	# Subclass hides its per-character rig (axe, claws) between swings.
+	_on_attack_end()
 
 func _on_attack_hit(body: Node) -> void:
 	if body == null or body in _hit_this_swing:
@@ -723,155 +686,32 @@ func _stage_config(stage: int) -> Dictionary:
 				"tint": Color(1.0, 0.85, 0.2),
 			}
 
-func _solve_ik(shoulder: Vector2, hand: Vector2, upper: float, fore: float, bend_sign: float) -> Vector2:
-	# Classic 2-bone IK: place an elbow so |shoulder→elbow|=upper and
-	# |elbow→hand|=fore. bend_sign picks which of the two solutions to use
-	# (positive = elbow bends "below" the shoulder→hand line in screen space).
-	var to_hand: Vector2 = hand - shoulder
-	var d: float = to_hand.length()
-	if d <= 0.0001:
-		return shoulder + Vector2(0.0, upper)
-	# If the target is out of reach, fully extend toward it.
-	if d >= upper + fore:
-		return shoulder + to_hand.normalized() * upper
-	# If the target is closer than the difference, collapse the elbow outward.
-	if d <= absf(upper - fore):
-		var sign_dir: float = 1.0 if upper >= fore else -1.0
-		return shoulder + to_hand.normalized() * upper * sign_dir
-	var a: float = (upper * upper - fore * fore + d * d) / (2.0 * d)
-	var h: float = sqrt(maxf(upper * upper - a * a, 0.0))
-	var axis: Vector2 = to_hand / d
-	var perp: Vector2 = Vector2(-axis.y, axis.x)
-	return shoulder + axis * a + perp * h * bend_sign
+# --- Virtual hooks overridden by per-character subclasses --------------
+# Player1.gd (Marine) builds an axe rig + jet flame and animates them.
+# Player2/3/4 (Demon / Greater Demon / Squirrel) keep these as no-ops or
+# build their own rigs. Base Player.gd intentionally builds no visuals
+# of its own — the per-character look lives with the per-character class.
 
-func _build_axe() -> void:
-	# A 2-handed battle axe drawn from polygons. Pivot sits at the front
-	# (lower) hand grip so rotation visually pivots around the marine's hand.
-	# Shaft extends UP from the pivot; the head sits at the top.
-	_axe = Node2D.new()
-	_axe.z_index = 2
-	_axe.visible = false
-	add_child(_axe)
+func get_character_id() -> String:
+	return ""
 
-	_axe_pivot = Node2D.new()
-	_axe.add_child(_axe_pivot)
+func _build_character_visuals() -> void:
+	pass
 
-	# Shaft (haft) — goes from grip (y=0) up to head (y=-26)
-	var shaft := Polygon2D.new()
-	shaft.color = Color(0.34, 0.22, 0.12)
-	shaft.polygon = PackedVector2Array([
-		Vector2(-1.4,   0.0), Vector2(1.4,  0.0),
-		Vector2(1.4, -26.0), Vector2(-1.4, -26.0),
-	])
-	_axe_pivot.add_child(shaft)
+func _update_jetpack_visual(_active: bool) -> void:
+	pass
 
-	# Grip wrap at the bottom (where the front hand grabs)
-	var grip := Polygon2D.new()
-	grip.color = Color(0.10, 0.08, 0.06)
-	grip.polygon = PackedVector2Array([
-		Vector2(-2.0, -2.0), Vector2(2.0, -2.0),
-		Vector2(2.0,  3.0), Vector2(-2.0, 3.0),
-	])
-	_axe_pivot.add_child(grip)
+func _is_attack_chaining() -> bool:
+	return false
 
-	# Upper shaft wrap (where the back hand grabs)
-	var grip2 := Polygon2D.new()
-	grip2.color = Color(0.10, 0.08, 0.06)
-	grip2.polygon = PackedVector2Array([
-		Vector2(-2.0, -16.0), Vector2(2.0, -16.0),
-		Vector2(2.0, -12.0), Vector2(-2.0, -12.0),
-	])
-	_axe_pivot.add_child(grip2)
+func _on_attack_start(_stage: int, _chaining: bool, _cfg: Dictionary) -> void:
+	pass
 
-	# Pommel below the grip
-	var pommel := Polygon2D.new()
-	pommel.color = Color(0.55, 0.55, 0.60)
-	pommel.polygon = PackedVector2Array([
-		Vector2(-2.4, 3.0), Vector2(2.4, 3.0),
-		Vector2(2.0, 6.0), Vector2(-2.0, 6.0),
-	])
-	_axe_pivot.add_child(pommel)
+func _on_attack_end() -> void:
+	pass
 
-	# Axe head — asymmetric so the "primary" blade leans forward
-	var head := Polygon2D.new()
-	head.color = Color(0.72, 0.74, 0.80)
-	head.polygon = PackedVector2Array([
-		Vector2(-6.0, -22.0), Vector2(0.0, -29.0),
-		Vector2(13.0, -30.0), Vector2(16.0, -25.0),
-		Vector2(13.0, -19.0), Vector2(0.0, -20.0),
-		Vector2(-6.0, -23.0),
-	])
-	_axe_pivot.add_child(head)
-
-	# Edge highlight on the bit
-	var edge := Polygon2D.new()
-	edge.color = Color(0.92, 0.95, 1.0)
-	edge.polygon = PackedVector2Array([
-		Vector2(11.0, -30.0), Vector2(16.0, -25.0), Vector2(13.0, -19.0),
-	])
-	_axe_pivot.add_child(edge)
-
-	# Back spike (small) opposite the bit
-	var spike := Polygon2D.new()
-	spike.color = Color(0.55, 0.55, 0.60)
-	spike.polygon = PackedVector2Array([
-		Vector2(-6.0, -23.0), Vector2(-6.0, -22.0),
-		Vector2(-10.0, -25.0),
-	])
-	_axe_pivot.add_child(spike)
-
-	# Trim band where head meets shaft
-	var trim := Polygon2D.new()
-	trim.color = Color(0.42, 0.32, 0.18)
-	trim.polygon = PackedVector2Array([
-		Vector2(-2.5, -22.0), Vector2(2.5, -22.0),
-		Vector2(2.5, -18.0), Vector2(-2.5, -18.0),
-	])
-	_axe_pivot.add_child(trim)
-
-	# --- Arms — 2-bone IK (shoulder → elbow → hand). Line2D's joint mode
-	# rounds the elbow corner; we recompute the elbow each frame so the
-	# arms bend naturally as the marine reaches through the swing.
-	_arm_back = Line2D.new()
-	_arm_back.width = 3.2
-	_arm_back.default_color = Color(0.20, 0.34, 0.12)
-	_arm_back.z_index = 1
-	_arm_back.visible = false
-	_arm_back.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_back.end_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_back.joint_mode = Line2D.LINE_JOINT_ROUND
-	_arm_back.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
-	add_child(_arm_back)
-
-	_arm_front = Line2D.new()
-	_arm_front.width = 3.4
-	_arm_front.default_color = Color(0.36, 0.56, 0.20)
-	_arm_front.z_index = 3
-	_arm_front.visible = false
-	_arm_front.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_front.end_cap_mode = Line2D.LINE_CAP_ROUND
-	_arm_front.joint_mode = Line2D.LINE_JOINT_ROUND
-	_arm_front.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
-	add_child(_arm_front)
-
-	# Small hand rects at the grip points so the joint reads
-	_hand_back = ColorRect.new()
-	_hand_back.color = Color(0.90, 0.78, 0.62)
-	_hand_back.offset_left = -2.0; _hand_back.offset_top = -2.0
-	_hand_back.offset_right = 2.0; _hand_back.offset_bottom = 2.0
-	_hand_back.z_index = 3
-	_hand_back.visible = false
-	_hand_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_hand_back)
-
-	_hand_front = ColorRect.new()
-	_hand_front.color = Color(0.95, 0.82, 0.66)
-	_hand_front.offset_left = -2.0; _hand_front.offset_top = -2.0
-	_hand_front.offset_right = 2.0; _hand_front.offset_bottom = 2.0
-	_hand_front.z_index = 4
-	_hand_front.visible = false
-	_hand_front.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_hand_front)
+func _update_attack_visuals(_delta: float) -> void:
+	pass
 
 
 func _on_hurtbox_area_entered(area: Area2D) -> void:
@@ -993,14 +833,18 @@ func current_weapon_label() -> String:
 	return WEAPON_NAMES[weapon]
 
 func play_voice(event: StringName) -> void:
-	if RunState == null:
+	# Voice clips are keyed off the subclass's own get_character_id() so
+	# every peer's player plays its OWN voice in multiplayer, not whatever
+	# the local machine's RunState.character happens to be.
+	var char_id := get_character_id()
+	if char_id == "":
 		return
-	var key := "%s/%s" % [RunState.character, String(event)]
+	var key := "%s/%s" % [char_id, String(event)]
 	var stream: AudioStream = null
 	if _voice_cache.has(key):
 		stream = _voice_cache[key]
 	else:
-		var path := "res://assets/voice/%s/%s.ogg" % [RunState.character, String(event)]
+		var path := "res://assets/voice/%s/%s.ogg" % [char_id, String(event)]
 		if ResourceLoader.exists(path):
 			stream = load(path) as AudioStream
 		_voice_cache[key] = stream  # cache nulls too, so we don't retry every frame
@@ -1042,84 +886,11 @@ func _update_sprite(delta: float) -> void:
 
 	_set_facing(facing_right)
 
-	# Animate the axe through its swing — windup back, then strike forward.
-	# Only the marine has the axe rig; demon attacks still hit but without it.
-	if is_attacking and _axe != null:
-		var cfg: Dictionary = _stage_config(attack_stage)
-		var dur: float = float(cfg["duration"])
-		var swing_t: float = 1.0 - clampf(attack_timer / maxf(dur, 0.001), 0.0, 1.0)
-		var r_start: float = float(cfg["rot_start"])
-		var r_end:   float = float(cfg["rot_end"])
-		var th_start: float = float(cfg["thrust_start"])
-		var th_end:   float = float(cfg["thrust_end"])
-
-		# Phase split: first ~28% is windup (ease-in-out from origin → start
-		# pose), the remaining ~72% is the strike (ease-out cubic from start
-		# pose → end pose). Stab skips windup since both ends share rotation.
-		const WINDUP: float = 0.28
-		var rot_now: float
-		var thrust_now: float
-		if swing_t < WINDUP and attack_stage != 3:
-			var u: float = swing_t / WINDUP
-			var ue: float = u * u * (3.0 - 2.0 * u)   # smoothstep
-			rot_now = lerpf(_attack_swing_origin_rot, r_start, ue)
-			thrust_now = lerpf(_attack_swing_origin_thrust, th_start, ue)
-		else:
-			var u2: float = clampf((swing_t - WINDUP) / (1.0 - WINDUP), 0.0, 1.0) if attack_stage != 3 else swing_t
-			var ue2: float = 1.0 - pow(1.0 - u2, 3.0)
-			rot_now = lerpf(r_start, r_end, ue2)
-			thrust_now = lerpf(th_start, th_end, ue2)
-
-		_axe_pivot.rotation = rot_now
-		_axe_pivot.position = Vector2(thrust_now, 0.0)
-
-		# Anchor + flip — the axe is held at the marine's front hand. We keep
-		# the axe rig in local space and flip the whole rig with facing.
-		var face_dir: float = 1.0 if facing_right else -1.0
-		_axe.position = Vector2(2.0 * face_dir, -2.0)
-		_axe.scale.x = face_dir
-
-		# --- Arms — 2-bone IK from shoulder to hand at the axe grip.
-		var front_shoulder: Vector2 = Vector2(3.0 * face_dir, -4.0)
-		var back_shoulder:  Vector2 = Vector2(-3.0 * face_dir, -4.0)
-		var front_grip_local := Vector2(0.0, 0.5)
-		var back_grip_local  := Vector2(0.0, -14.0)
-		var front_grip: Vector2 = to_local(_axe_pivot.to_global(front_grip_local))
-		var back_grip:  Vector2 = to_local(_axe_pivot.to_global(back_grip_local))
-
-		# Anatomy: upper arm 7px, forearm 8px. Front arm reaches farther
-		# (lead arm), back arm slightly shorter to keep elbow inside the
-		# body silhouette.
-		var front_elbow: Vector2 = _solve_ik(front_shoulder, front_grip, 7.0, 8.0, 1.0)
-		var back_elbow:  Vector2 = _solve_ik(back_shoulder, back_grip, 6.5, 7.5, 1.0)
-
-		_arm_front.points = PackedVector2Array([front_shoulder, front_elbow, front_grip])
-		_arm_back.points  = PackedVector2Array([back_shoulder, back_elbow, back_grip])
-		_hand_front.position = front_grip - Vector2(2.0, 2.0)
-		_hand_back.position  = back_grip - Vector2(2.0, 2.0)
-
-		# Body engagement: lean the marine sprite into the swing during the
-		# strike phase. The lean is applied with facing direction so the
-		# marine always tilts into the swing, not against it.
-		var lean_amount: float = 0.0
-		if attack_stage == 1:
-			lean_amount = 0.18
-		elif attack_stage == 2:
-			lean_amount = 0.25
-		elif attack_stage == 3:
-			lean_amount = 0.05
-		var lean_t: float = clampf((swing_t - 0.30) / 0.50, 0.0, 1.0)
-		var lean_decay: float = clampf((swing_t - 0.80) / 0.20, 0.0, 1.0)
-		var lean_now: float = lean_amount * lean_t * (1.0 - lean_decay * 0.6) * face_dir
-		sprite.rotation = lerpf(sprite.rotation, lean_now, minf(delta * 26.0, 1.0))
-
-		# Stab step-forward: shift the sprite slightly in facing direction
-		var step_offset: float = 0.0
-		if attack_stage == 3:
-			var step_t: float = clampf((swing_t - 0.15) / 0.45, 0.0, 1.0)
-			var step_back: float = clampf((swing_t - 0.70) / 0.30, 0.0, 1.0)
-			step_offset = 3.0 * step_t * (1.0 - step_back)
-		sprite.position.x = lerpf(sprite.position.x, step_offset * face_dir, minf(delta * 26.0, 1.0))
+	# Per-character swing animation (axe pose / arm IK / lean / step). Marine
+	# overrides _update_attack_visuals to animate its axe rig; other
+	# characters keep the default no-op and just play the squash/stretch.
+	if is_attacking:
+		_update_attack_visuals(delta)
 	else:
 		# Settle the sprite back to its rest pose between swings.
 		sprite.rotation = lerpf(sprite.rotation, 0.0, minf(delta * 18.0, 1.0))

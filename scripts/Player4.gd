@@ -1,5 +1,5 @@
 extends Player
-class_name Player4
+class_name Squirrel
 
 # Squirrel avatar controller. Inherits the full Player moveset.
 #
@@ -13,6 +13,9 @@ class_name Player4
 # `idle` / `walk` from it. This subclass also picks the richer squirrel
 # animations (run / crouch / slide / slash / stab) when those player
 # states are active.
+
+func get_character_id() -> String:
+	return "squirrel"
 
 func _update_sprite(delta: float) -> void:
 	super._update_sprite(delta)
