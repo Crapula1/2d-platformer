@@ -4,7 +4,17 @@ extends Node
 
 const DEFAULT_PORT: int = 7777
 const MAX_PLAYERS: int = 4
-const CHARACTERS: Array[String] = ["marine", "demon", "greater_demon", "squirrel"]
+# Roster shared between singleplayer CharacterSelect and the multiplayer
+# Lobby. Append-only — order is used as the canonical slot ordering on the
+# pick UIs.
+const CHARACTERS: Array[String] = ["marine", "demon", "greater_demon", "squirrel", "warden"]
+# Characters that are visible on the pick screens but cannot be selected.
+# Add ids here to lock; pair with an entry in UNLOCK_HINTS so the UI can
+# show *why* it's locked.
+const LOCKED_CHARACTERS: Array[String] = ["warden"]
+const UNLOCK_HINTS: Dictionary = {
+	"warden": "Coming in a future update",
+}
 const GAME_SCENE_PATH: String = "res://scenes/Main.tscn"
 const MENU_SCENE_PATH: String = "res://scenes/MainMenu.tscn"
 
@@ -154,12 +164,30 @@ func _record_discovered(ip: String, port: int) -> void:
 func set_local_character(c: String) -> void:
 	if not (c in CHARACTERS):
 		return
+	if is_locked(c):
+		return
 	local_character = c
 	var id := multiplayer.get_unique_id()
 	if not players.has(id):
 		return
 	players[id].character = c
 	_sync_player_state.rpc(id, players[id])
+
+func is_locked(c: String) -> bool:
+	return c in LOCKED_CHARACTERS
+
+func unlocked_characters() -> Array[String]:
+	var out: Array[String] = []
+	for c in CHARACTERS:
+		if not is_locked(c):
+			out.append(c)
+	return out
+
+func random_unlocked_character() -> String:
+	var pool := unlocked_characters()
+	if pool.is_empty():
+		return CHARACTERS[0]
+	return pool[randi() % pool.size()]
 
 func set_local_ready(r: bool) -> void:
 	var id := multiplayer.get_unique_id()

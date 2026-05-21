@@ -7,12 +7,14 @@ const CHAR_COLORS := {
 	"demon":         Color(0.95, 0.35, 0.30),
 	"greater_demon": Color(1.0, 0.55, 0.15),
 	"squirrel":      Color(0.85, 0.55, 0.22),
+	"warden":        Color(0.85, 0.95, 0.65),
 }
 const CHAR_DESCRIPTIONS := {
 	"marine":        "Standard kit:\nrifle + shotgun + axe combo",
 	"demon":         "Flame-tinted bruiser:\nmelee hitbox only (no axe yet)",
 	"greater_demon": "Caped warlord:\ntwin horns, armored melee",
 	"squirrel":      "Quick scrapper:\nslash / stab / slide kit",
+	"warden":        "Disciplined veteran:\nidentity TBD",
 }
 const MARINE_ICON_PATH := "res://assets/sprites/frames/idle_0.png"
 
@@ -107,6 +109,13 @@ func _build_ui() -> void:
 	controls.add_theme_constant_override("separation", 8)
 	root.add_child(controls)
 
+	var random_btn := Button.new()
+	random_btn.text = "Random"
+	random_btn.custom_minimum_size = Vector2(90, 28)
+	random_btn.add_theme_font_size_override("font_size", 13)
+	random_btn.pressed.connect(_on_random_pressed)
+	controls.add_child(random_btn)
+
 	ready_btn = Button.new()
 	ready_btn.text = "Ready"
 	ready_btn.custom_minimum_size = Vector2(100, 28)
@@ -158,10 +167,21 @@ func _refresh() -> void:
 		c.queue_free()
 
 	var my_id := multiplayer.get_unique_id()
+	# Render MAX_PLAYERS fixed slots so players see all P1..P4 boxes whether
+	# or not they're filled. Slot order: host first, then remaining peers in
+	# join order (ascending peer id).
 	var keys := Net.players.keys()
 	keys.sort()
-	for id in keys:
-		list_box.add_child(_make_row(id, Net.players[id], id == my_id))
+	# Pull the host (id 1) to the front so they're always P1.
+	if 1 in keys:
+		keys.erase(1)
+		keys.push_front(1)
+	for slot in Net.MAX_PLAYERS:
+		if slot < keys.size():
+			var id: int = keys[slot]
+			list_box.add_child(_make_row(slot + 1, id, Net.players[id], id == my_id))
+		else:
+			list_box.add_child(_make_empty_row(slot + 1))
 
 	# Header counts + status updates.
 	count_label.text = "Players %d / %d" % [Net.players.size(), Net.MAX_PLAYERS]
@@ -179,10 +199,18 @@ func _refresh() -> void:
 	else:
 		status_label.text = ""
 
-func _make_row(id: int, p: Dictionary, is_me: bool) -> HBoxContainer:
+func _make_row(slot: int, id: int, p: Dictionary, is_me: bool) -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
+	row.add_theme_constant_override("separation", 12)
 	row.custom_minimum_size = Vector2(0, 22)
+
+	var slot_lbl := Label.new()
+	slot_lbl.text = "P%d" % slot
+	slot_lbl.custom_minimum_size = Vector2(28, 0)
+	slot_lbl.add_theme_font_size_override("font_size", 12)
+	slot_lbl.add_theme_color_override("font_color",
+		Color(1.0, 0.95, 0.6) if is_me else Color(0.55, 0.7, 0.85))
+	row.add_child(slot_lbl)
 
 	var swatch := ColorRect.new()
 	swatch.custom_minimum_size = Vector2(10, 16)
@@ -193,7 +221,7 @@ func _make_row(id: int, p: Dictionary, is_me: bool) -> HBoxContainer:
 	var marker := " (host)" if id == 1 else ""
 	var you := "  [you]" if is_me else ""
 	name_lbl.text = "%s%s%s" % [p.name, marker, you]
-	name_lbl.custom_minimum_size = Vector2(220, 0)
+	name_lbl.custom_minimum_size = Vector2(200, 0)
 	if is_me:
 		name_lbl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.6))
 	row.add_child(name_lbl)
@@ -212,18 +240,43 @@ func _make_row(id: int, p: Dictionary, is_me: bool) -> HBoxContainer:
 
 	return row
 
+func _make_empty_row(slot: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.custom_minimum_size = Vector2(0, 22)
+
+	var slot_lbl := Label.new()
+	slot_lbl.text = "P%d" % slot
+	slot_lbl.custom_minimum_size = Vector2(28, 0)
+	slot_lbl.add_theme_font_size_override("font_size", 12)
+	slot_lbl.add_theme_color_override("font_color", Color(0.35, 0.40, 0.50))
+	row.add_child(slot_lbl)
+
+	var status := Label.new()
+	status.text = "— open slot —"
+	status.add_theme_font_size_override("font_size", 11)
+	status.add_theme_color_override("font_color", Color(0.40, 0.45, 0.55))
+	row.add_child(status)
+
+	return row
+
 func _build_character_tile(character: String) -> Control:
 	var accent: Color = CHAR_COLORS.get(character, Color(0.6, 0.85, 1.0))
+	var locked: bool = Net.is_locked(character)
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(120, 110)
-	panel.add_theme_stylebox_override("panel", _tile_style(accent, false))
+	panel.add_theme_stylebox_override("panel", _tile_style(accent, false, false, locked))
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Locked tiles still respond to hover so the lock hint is discoverable,
+	# but clicks are dropped before reaching Net.set_local_character.
 	panel.gui_input.connect(func(ev: InputEvent) -> void:
 		if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed \
 				and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 			_select_character(character)
 	)
+	panel.mouse_entered.connect(func() -> void: _on_tile_hover(character, true))
+	panel.mouse_exited.connect(func() -> void: _on_tile_hover(character, false))
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 6)
@@ -244,21 +297,27 @@ func _build_character_tile(character: String) -> Control:
 	vb.add_child(preview)
 
 	var name_lbl := Label.new()
-	name_lbl.text = character.to_upper()
+	name_lbl.text = character.to_upper() if not locked else "[ LOCKED ]"
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_lbl.add_theme_font_size_override("font_size", 13)
-	name_lbl.add_theme_color_override("font_color", accent)
+	name_lbl.add_theme_color_override("font_color", accent if not locked else Color(0.55, 0.55, 0.60))
 	vb.add_child(name_lbl)
 
+	var desc_text: String = CHAR_DESCRIPTIONS.get(character, "")
+	if locked:
+		desc_text = "LOCKED\n" + String(Net.UNLOCK_HINTS.get(character, ""))
 	var desc := Label.new()
-	desc.text = CHAR_DESCRIPTIONS.get(character, "")
+	desc.text = desc_text
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.add_theme_font_size_override("font_size", 8)
-	desc.add_theme_color_override("font_color", Color(0.7, 0.8, 0.9))
+	desc.add_theme_color_override("font_color", Color(1.0, 0.65, 0.35) if locked else Color(0.7, 0.8, 0.9))
 	vb.add_child(desc)
 
-	char_tiles[character] = { "panel": panel, "accent": accent }
+	if locked:
+		preview.modulate = Color(0.35, 0.35, 0.40)
+
+	char_tiles[character] = { "panel": panel, "accent": accent, "locked": locked }
 	return panel
 
 func _build_preview(character: String, accent: Color) -> Control:
@@ -266,7 +325,30 @@ func _build_preview(character: String, accent: Color) -> Control:
 		"marine":         return _build_marine_preview()
 		"greater_demon":  return _build_greater_demon_preview(accent)
 		"squirrel":       return _build_squirrel_preview(accent)
+		"warden":         return _build_warden_preview(accent)
 		_:                return _build_demon_preview(accent)
+
+func _build_warden_preview(accent: Color) -> Control:
+	# Placeholder silhouette + "?" — warden has no Player scene yet, this just
+	# fills the locked tile.
+	var holder := Control.new()
+	var silhouette := Polygon2D.new()
+	silhouette.color = accent.darkened(0.45)
+	silhouette.polygon = PackedVector2Array([
+		Vector2(20, 6), Vector2(36, 6), Vector2(40, 16),
+		Vector2(44, 56), Vector2(12, 56), Vector2(16, 16),
+	])
+	holder.add_child(silhouette)
+	var question := Label.new()
+	question.text = "?"
+	question.add_theme_font_size_override("font_size", 28)
+	question.add_theme_color_override("font_color", accent)
+	question.anchor_right = 1.0
+	question.anchor_bottom = 1.0
+	question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	question.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	holder.add_child(question)
+	return holder
 
 func _build_marine_preview() -> Control:
 	var tex := Control.new()
@@ -388,32 +470,56 @@ func _build_squirrel_preview(accent: Color) -> Control:
 	holder.add_child(eye)
 	return holder
 
-func _tile_style(accent: Color, selected: bool) -> StyleBoxFlat:
+func _tile_style(accent: Color, selected: bool, hovered: bool = false, locked: bool = false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.14, 0.22) if not selected else Color(0.18, 0.25, 0.38)
+	if locked:
+		sb.bg_color = Color(0.07, 0.08, 0.12)
+	elif selected:
+		sb.bg_color = Color(0.18, 0.25, 0.38)
+	elif hovered:
+		sb.bg_color = Color(0.14, 0.20, 0.32)
+	else:
+		sb.bg_color = Color(0.10, 0.14, 0.22)
 	sb.border_width_left = 2
 	sb.border_width_top = 2
 	sb.border_width_right = 2
 	sb.border_width_bottom = 2
-	sb.border_color = accent if selected else Color(0.30, 0.38, 0.50)
+	if locked:
+		sb.border_color = Color(0.25, 0.25, 0.30)
+	elif selected:
+		sb.border_color = accent
+	elif hovered:
+		sb.border_color = accent.lerp(Color(0.9, 0.95, 1.0), 0.3)
+	else:
+		sb.border_color = Color(0.30, 0.38, 0.50)
 	sb.corner_radius_top_left = 4
 	sb.corner_radius_top_right = 4
 	sb.corner_radius_bottom_left = 4
 	sb.corner_radius_bottom_right = 4
 	return sb
 
-func _refresh_tile_selection() -> void:
+func _refresh_tile_selection(hovered_char: String = "") -> void:
 	for c: String in char_tiles.keys():
 		var entry: Dictionary = char_tiles[c]
 		var panel := entry["panel"] as PanelContainer
 		var selected: bool = (c == Net.local_character)
-		panel.add_theme_stylebox_override("panel", _tile_style(entry["accent"], selected))
+		var hovered: bool = (c == hovered_char)
+		var locked: bool = bool(entry.get("locked", false))
+		panel.add_theme_stylebox_override("panel", _tile_style(entry["accent"], selected, hovered, locked))
+
+func _on_tile_hover(character: String, hovered: bool) -> void:
+	_refresh_tile_selection(character if hovered else "")
 
 func _select_character(character: String) -> void:
+	if Net.is_locked(character):
+		return
 	if Net.local_character == character:
 		return
 	Net.set_local_character(character)
 	_refresh_tile_selection()
+
+func _on_random_pressed() -> void:
+	_select_character(Net.random_unlocked_character())
 
 func _on_ready_toggled(pressed: bool) -> void:
 	Net.set_local_ready(pressed)
