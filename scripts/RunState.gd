@@ -48,6 +48,8 @@ const CHARACTER_STATS: Dictionary = {
 		"max_jumps": 2,
 		"jetpack_duration": 3.0,
 		"allowed_weapons": ["rifle", "shotgun"],
+		"desc": "Versatile rifle + shotgun + axe loadout.\nBalanced HP and mobility.",
+		"scene": "res://scenes/Player.tscn",
 	},
 	"demon": {
 		"display_name": "DEMON",
@@ -59,6 +61,8 @@ const CHARACTER_STATS: Dictionary = {
 		"max_jumps": 2,
 		"jetpack_duration": 2.5,
 		"allowed_weapons": ["melee"],
+		"desc": "Lithe demonic brawler. Light frame,\nquick swings, single pair of horns.",
+		"scene": "res://scenes/PlayerDemon.tscn",
 	},
 	"greater_demon": {
 		"display_name": "GREATER DEMON",
@@ -70,6 +74,8 @@ const CHARACTER_STATS: Dictionary = {
 		"max_jumps": 1,
 		"jetpack_duration": 2.0,
 		"allowed_weapons": ["melee"],
+		"desc": "Heavy demonic warlord. Caped, twin\nhorn pairs, claws — armored melee.",
+		"scene": "res://scenes/PlayerGreaterDemon.tscn",
 	},
 	"squirrel": {
 		"display_name": "SQUIRREL",
@@ -81,8 +87,19 @@ const CHARACTER_STATS: Dictionary = {
 		"max_jumps": 3,
 		"jetpack_duration": 2.5,
 		"allowed_weapons": ["melee"],
+		"desc": "Humanoid squirrel with animated\nidle / walk / run / crouch / slide /\nslash / stab frames.",
+		"scene": "res://scenes/Player4.tscn",
 	},
 }
+
+# Stable display order for any UI that iterates characters (select screen,
+# HUDs, etc.). Keys-of a Dictionary keep insertion order in Godot 4, but
+# this list makes the dependency explicit.
+const CHARACTER_ORDER: Array[String] = ["marine", "demon", "greater_demon", "squirrel"]
+
+func character_scene_path(id: String) -> String:
+	var d: Dictionary = CHARACTER_STATS.get(id, CHARACTER_STATS["marine"])
+	return String(d.get("scene", "res://scenes/Player.tscn"))
 
 # Run-wide selections set on the character-select screen.
 var character: String = "marine"  # see CHARACTER_STATS keys

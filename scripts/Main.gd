@@ -216,11 +216,10 @@ func _flash_spawned_character_banner(character_id: String, scene_path: String) -
 	)
 
 func _scene_path_for_character(character_id: String) -> String:
-	match character_id:
-		"demon":         return "res://scenes/PlayerDemon.tscn"
-		"greater_demon": return "res://scenes/PlayerGreaterDemon.tscn"
-		"squirrel":      return "res://scenes/Player4.tscn"
-		_:               return "res://scenes/Player.tscn"
+	# Single source of truth is RunState.CHARACTER_STATS[id].scene. Falling
+	# back through character_scene_path keeps a stray/unknown id from crashing
+	# the scene change — it just spawns the marine instead.
+	return RunState.character_scene_path(character_id)
 
 func _setup_multiplayer() -> void:
 	# Remove the solo Player that's baked into Level so the spawner is the
