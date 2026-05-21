@@ -1125,8 +1125,7 @@ func _update_sprite(delta: float) -> void:
 		sprite.rotation = lerpf(sprite.rotation, 0.0, minf(delta * 18.0, 1.0))
 		sprite.position.x = lerpf(sprite.position.x, 0.0, minf(delta * 18.0, 1.0))
 
-	var anim: StringName = &"walk" if is_on_floor() and absf(velocity.x) > 10.0 else &"idle"
-	_play_anim(anim)
+	_play_anim(_pick_anim_name())
 
 	# Squash/stretch in units of the marine baseline (0.3). Scaling by
 	# base_scale / 0.3 lets demon (base_scale 1.0) reuse the same multipliers.
@@ -1170,8 +1169,36 @@ func _set_facing(face_right: bool) -> void:
 func _play_anim(anim_name: StringName) -> void:
 	if _anim_sprite == null:
 		return
+	# Fall back to idle if this SpriteFrames doesn't have the requested clip,
+	# so a richer state set (run/crouch/slide/slash/stab) works on characters
+	# that ship those frames while marine (idle/walk only) keeps animating.
+	var frames := _anim_sprite.sprite_frames
+	if frames != null and not frames.has_animation(anim_name):
+		anim_name = &"walk" if anim_name == &"run" and frames.has_animation(&"walk") else &"idle"
 	if _anim_sprite.animation != anim_name:
 		_anim_sprite.play(anim_name)
+
+# Map the player's current movement/combat state to an animation name. The
+# richer names (run, crouch, slide, slash, stab) are no-ops for the marine
+# SpriteFrames; _play_anim folds them back to walk/idle when missing.
+func _pick_anim_name() -> StringName:
+	if is_attacking:
+		# Stab = combo stage 3, everything else reads as slash.
+		return &"stab" if attack_stage == 3 else &"slash"
+	if is_sliding:
+		return &"slide"
+	if is_crouching:
+		return &"crouch"
+	if not is_on_floor():
+		# No dedicated jump/fall clip in the squirrel sheet — idle reads fine
+		# while airborne since squash/stretch carries the visual.
+		return &"idle"
+	var spd := absf(velocity.x)
+	if spd < 10.0:
+		return &"idle"
+	if spd > speed * 1.25:
+		return &"run"
+	return &"walk"
 
 func _handle_shoot_input() -> void:
 	if is_dead:
