@@ -153,11 +153,13 @@ func _build() -> void:
 		btn.toggle_mode = true
 		btn.disabled = locked
 		_style_button(btn, locked)
-		var idx := i
-		btn.pressed.connect(func() -> void: _on_character_picked(idx))
-		btn.mouse_entered.connect(func() -> void: _on_character_hover(idx))
-		btn.mouse_exited.connect(func() -> void: _on_character_hover(-1))
-		btn.focus_entered.connect(func() -> void: _on_character_hover(idx))
+		# Bind the index explicitly. Lambda capture of a loop-local var here
+		# silently routed every press to the last iteration's index (warden,
+		# locked), which made every pick fall back to marine.
+		btn.pressed.connect(_on_character_picked.bind(i))
+		btn.mouse_entered.connect(_on_character_hover.bind(i))
+		btn.mouse_exited.connect(_on_character_hover.bind(-1))
+		btn.focus_entered.connect(_on_character_hover.bind(i))
 		char_grid.add_child(btn)
 		_char_buttons.append(btn)
 
