@@ -144,7 +144,7 @@ properties/14/replication_mode = 2
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_player")
-base_scale = Vector2(1, 1)
+base_scale = Vector2(0.35, 0.35)
 
 [node name="Sprite" type="AnimatedSprite2D" parent="."]
 texture_filter = 1
