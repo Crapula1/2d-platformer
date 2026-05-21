@@ -16,8 +16,10 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]
 
+CharacterDB="*res://scripts/CharacterDB.gd"
 RunState="*res://scripts/RunState.gd"
 Settings="*res://scripts/Settings.gd"
+Lobby="*res://scripts/Lobby.gd"
 
 [display]
 

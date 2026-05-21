@@ -12,6 +12,11 @@ var speed_mult: float = 1.0
 var grenade_cd_mult: float = 1.0
 var invincibility_bonus: float = 0.0
 
+# Character selection. Set by CharacterSelect before scene transition; applied
+# once in start_new_run so per-character stat modifiers fold into the run's
+# base values and then ride along with the existing upgrade math.
+var selected_character_id: String = "marine"
+
 func start_new_run() -> void:
 	is_run_active = true
 	depth = 0
@@ -24,6 +29,12 @@ func start_new_run() -> void:
 	speed_mult = 1.0
 	grenade_cd_mult = 1.0
 	invincibility_bonus = 0.0
+
+	var c: Dictionary = CharacterDB.get_character(selected_character_id)
+	saved_max_health += c["hp_bonus"]
+	saved_health = saved_max_health
+	attack_bonus += c["attack_bonus"]
+	speed_mult *= c["speed_mult"]
 
 func save_from_player(player: Player) -> void:
 	saved_health = player.current_health
