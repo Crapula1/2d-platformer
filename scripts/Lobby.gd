@@ -17,6 +17,7 @@ const CHAR_DESCRIPTIONS := {
 	"warden":        "Disciplined veteran:\nidentity TBD",
 }
 const MARINE_ICON_PATH := "res://assets/sprites/frames/idle_0.png"
+const GREATER_DEMON_ICON_PATH := "res://assets/sprites/greater_demon/idle_0.png"
 
 var list_box: VBoxContainer
 var ready_btn: Button
@@ -389,50 +390,16 @@ func _build_demon_preview(accent: Color) -> Control:
 	holder.add_child(eye)
 	return holder
 
-func _build_greater_demon_preview(accent: Color) -> Control:
-	# Heavier silhouette than the lesser demon: wider body, draped cape behind,
-	# two pairs of horns to match the in-game GreaterDemon.
+func _build_greater_demon_preview(_accent: Color) -> Control:
 	var holder := Control.new()
-	var cape := Polygon2D.new()
-	cape.color = accent.darkened(0.45)
-	cape.polygon = PackedVector2Array([
-		Vector2(10, 24), Vector2(54, 24),
-		Vector2(58, 62), Vector2(6, 62),
-	])
-	holder.add_child(cape)
-	var body := ColorRect.new()
-	body.color = accent
-	body.offset_left = 14; body.offset_top = 24
-	body.offset_right = 50; body.offset_bottom = 60
-	holder.add_child(body)
-	var head := ColorRect.new()
-	head.color = accent.darkened(0.18)
-	head.offset_left = 20; head.offset_top = 8
-	head.offset_right = 44; head.offset_bottom = 26
-	holder.add_child(head)
-	# Inner horn pair
-	var horn_il := Polygon2D.new()
-	horn_il.color = Color(0.10, 0.05, 0.05)
-	horn_il.polygon = PackedVector2Array([Vector2(24, 8), Vector2(28, 8), Vector2(26, 1), Vector2(22, 5)])
-	holder.add_child(horn_il)
-	var horn_ir := Polygon2D.new()
-	horn_ir.color = Color(0.10, 0.05, 0.05)
-	horn_ir.polygon = PackedVector2Array([Vector2(36, 8), Vector2(40, 8), Vector2(42, 5), Vector2(38, 1)])
-	holder.add_child(horn_ir)
-	# Outer horn pair, swept wider
-	var horn_ol := Polygon2D.new()
-	horn_ol.color = Color(0.08, 0.03, 0.03)
-	horn_ol.polygon = PackedVector2Array([Vector2(20, 10), Vector2(24, 10), Vector2(18, 0), Vector2(14, 6)])
-	holder.add_child(horn_ol)
-	var horn_or := Polygon2D.new()
-	horn_or.color = Color(0.08, 0.03, 0.03)
-	horn_or.polygon = PackedVector2Array([Vector2(40, 10), Vector2(44, 10), Vector2(50, 6), Vector2(46, 0)])
-	holder.add_child(horn_or)
-	var eye := ColorRect.new()
-	eye.color = Color(1.0, 0.85, 0.30)
-	eye.offset_left = 26; eye.offset_top = 14
-	eye.offset_right = 38; eye.offset_bottom = 20
-	holder.add_child(eye)
+	var rect := TextureRect.new()
+	rect.texture = load(GREATER_DEMON_ICON_PATH) as Texture2D
+	rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.anchor_right = 1.0
+	rect.anchor_bottom = 1.0
+	holder.add_child(rect)
 	return holder
 
 func _build_squirrel_preview(accent: Color) -> Control:

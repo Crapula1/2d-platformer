@@ -11,6 +11,7 @@ extends Control
 const MAIN_MENU_SCENE := "res://scenes/MainMenu.tscn"
 const GAME_SCENE := "res://scenes/Main.tscn"
 const MARINE_ICON_PATH := "res://assets/sprites/frames/idle_0.png"
+const GREATER_DEMON_ICON_PATH := "res://assets/sprites/greater_demon/idle_0.png"
 
 # Roster mirrors Net.CHARACTERS order. Add `locked = true` + an unlock_hint
 # entry in Net.UNLOCK_HINTS to gate a character behind a future condition.
@@ -409,30 +410,16 @@ func _demon_preview(accent: Color) -> Control:
 	holder.add_child(eye)
 	return holder
 
-func _greater_demon_preview(accent: Color) -> Control:
+func _greater_demon_preview(_accent: Color) -> Control:
 	var holder := Control.new()
-	var cape := Polygon2D.new()
-	cape.color = accent.darkened(0.45)
-	cape.polygon = PackedVector2Array([
-		Vector2(18, 36), Vector2(80, 36),
-		Vector2(86, 92), Vector2(12, 92),
-	])
-	holder.add_child(cape)
-	var body := ColorRect.new()
-	body.color = accent
-	body.offset_left = 26; body.offset_top = 36
-	body.offset_right = 74; body.offset_bottom = 90
-	holder.add_child(body)
-	var head := ColorRect.new()
-	head.color = accent.darkened(0.18)
-	head.offset_left = 34; head.offset_top = 12
-	head.offset_right = 66; head.offset_bottom = 38
-	holder.add_child(head)
-	var eye := ColorRect.new()
-	eye.color = Color(1.0, 0.85, 0.30)
-	eye.offset_left = 42; eye.offset_top = 22
-	eye.offset_right = 58; eye.offset_bottom = 30
-	holder.add_child(eye)
+	var rect := TextureRect.new()
+	rect.texture = load(GREATER_DEMON_ICON_PATH) as Texture2D
+	rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.anchor_right = 1.0
+	rect.anchor_bottom = 1.0
+	holder.add_child(rect)
 	return holder
 
 func _squirrel_preview(accent: Color) -> Control:
