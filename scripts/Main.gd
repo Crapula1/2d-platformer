@@ -53,6 +53,9 @@ var player: Player = null
 var spawn_position: Vector2
 var _level: Node = null
 var _pause_menu: CanvasLayer = null
+# Touch death overlay (RESTART / MAIN MENU). Desktop keeps the keyboard-only
+# "R to restart" prompt; touch users would otherwise be stranded.
+var _death_overlay: CanvasLayer = null
 @onready var players_root: Node2D = $Players
 @onready var spawner: MultiplayerSpawner = $Players/MultiplayerSpawner
 @onready var projectiles_root: Node2D = $Projectiles
@@ -532,10 +535,67 @@ func _on_grenade_changed(type_name: String, count: int) -> void:
 		grenade_label.add_theme_color_override("font_color", GRENADE_COLORS[idx])
 
 func _on_player_died() -> void:
-	message_label.text = "YOU DIED\nDepth %d | Score %d\nR to restart" % [RunState.depth, player.score if player else 0]
+	var hint := "Tap to restart" if MobileUI.is_touch() else "R to restart"
+	message_label.text = "YOU DIED\nDepth %d | Score %d\n%s" % [RunState.depth, player.score if player else 0, hint]
 	message_label.modulate = Color(1.0, 0.3, 0.3)
 	if player:
 		player.set_physics_process(false)
+	if MobileUI.is_touch():
+		_show_touch_death_overlay()
+
+func _show_touch_death_overlay() -> void:
+	# Only host can restart in MP — mirror the keyboard path's gate so a client
+	# tap doesn't desync the run.
+	var is_host_local: bool = (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server()
+	if is_instance_valid(_death_overlay):
+		return
+	_death_overlay = CanvasLayer.new()
+	_death_overlay.layer = 11
+	add_child(_death_overlay)
+
+	# Anchor the row to horizontal center, ~60% down the screen — keeps the
+	# YOU DIED message label readable above it. CenterContainer would ignore
+	# the vertical offset, so anchor manually.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.anchor_left = 0.5
+	row.anchor_right = 0.5
+	row.anchor_top = 0.6
+	row.anchor_bottom = 0.6
+	row.offset_left = -240.0
+	row.offset_right = 240.0
+	row.offset_top = 0.0
+	row.offset_bottom = 100.0
+	_death_overlay.add_child(row)
+
+	var restart_btn := Button.new()
+	restart_btn.text = "RESTART"
+	restart_btn.custom_minimum_size = Vector2(220, 90)
+	restart_btn.add_theme_font_size_override("font_size", 28)
+	restart_btn.disabled = not is_host_local
+	restart_btn.pressed.connect(func() -> void:
+		if is_instance_valid(_death_overlay):
+			_death_overlay.queue_free()
+			_death_overlay = null
+		if multiplayer.has_multiplayer_peer():
+			rpc("net_reload_run")
+		else:
+			net_reload_run()
+	)
+	row.add_child(restart_btn)
+
+	var menu_btn := Button.new()
+	menu_btn.text = "MAIN MENU"
+	menu_btn.custom_minimum_size = Vector2(220, 90)
+	menu_btn.add_theme_font_size_override("font_size", 28)
+	menu_btn.pressed.connect(func() -> void:
+		if multiplayer.has_multiplayer_peer() and multiplayer.is_server():
+			rpc("net_return_to_lobby")
+		elif not multiplayer.has_multiplayer_peer():
+			get_tree().change_scene_to_file(Net.MENU_SCENE_PATH)
+	)
+	row.add_child(menu_btn)
 
 func _on_level_exit() -> void:
 	if multiplayer.has_multiplayer_peer() and not multiplayer.is_server():
@@ -650,6 +710,9 @@ func _show_upgrade_screen_with(upgrade_ids: PackedStringArray) -> void:
 		note.offset_top = 360.0
 		note.offset_bottom = 400.0
 		overlay.add_child(note)
+
+	# Touch users need bigger fonts / hit targets than the desktop layout.
+	MobileUI.scale_menu(overlay, 1.4)
 
 func _fade_and_load() -> void:
 	var fade_layer := CanvasLayer.new()

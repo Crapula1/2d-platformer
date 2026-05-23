@@ -56,9 +56,12 @@ const COL_LOCKED := Color(0.08, 0.08, 0.10)
 var _selected_character: int = 0
 var _hovered_character: int = -1
 var _selected_difficulty: int = RunState.DIFF_MEDIUM
+var _selected_level: int = 0
 
 var _char_buttons: Array[Button] = []
 var _diff_buttons: Array[Button] = []
+var _level_buttons: Array[Button] = []
+var _level_summary_label: Label = null
 var _preview_sprite: Control = null
 var _preview_name: Label = null
 var _preview_desc: Label = null
@@ -76,6 +79,7 @@ func _ready() -> void:
 		_selected_character = _char_index_from_id("marine")
 		RunState.character = "marine"
 	_selected_difficulty = RunState.difficulty
+	_selected_level = clampi(RunState.start_level, 0, RunState.LEVEL_NAMES.size() - 1)
 	_build()
 	_refresh_selection()
 	MobileUI.scale_menu(self)
@@ -204,6 +208,35 @@ func _build() -> void:
 	_diff_summary_label.add_theme_color_override("font_color", Color(0.78, 0.86, 1.0))
 	vb.add_child(_diff_summary_label)
 
+	# --- Starting level row ---
+	var level_label := Label.new()
+	level_label.text = "STARTING LEVEL"
+	level_label.add_theme_font_size_override("font_size", 14)
+	level_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
+	vb.add_child(level_label)
+
+	var level_row := HBoxContainer.new()
+	level_row.add_theme_constant_override("separation", 8)
+	level_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(level_row)
+
+	for i in RunState.LEVEL_NAMES.size():
+		var btn := Button.new()
+		btn.text = RunState.LEVEL_NAMES[i]
+		btn.custom_minimum_size = Vector2(140, 40)
+		btn.add_theme_font_size_override("font_size", 15)
+		btn.toggle_mode = true
+		_style_button(btn, false)
+		btn.pressed.connect(_on_level_picked.bind(i))
+		level_row.add_child(btn)
+		_level_buttons.append(btn)
+
+	_level_summary_label = Label.new()
+	_level_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_level_summary_label.add_theme_font_size_override("font_size", 12)
+	_level_summary_label.add_theme_color_override("font_color", Color(0.78, 0.86, 1.0))
+	vb.add_child(_level_summary_label)
+
 	# --- Bottom buttons ---
 	var btn_row := HBoxContainer.new()
 	btn_row.add_theme_constant_override("separation", 12)
@@ -290,6 +323,10 @@ func _on_difficulty_picked(i: int) -> void:
 	_selected_difficulty = i
 	_refresh_selection()
 
+func _on_level_picked(i: int) -> void:
+	_selected_level = i
+	_refresh_selection()
+
 func _on_random_pressed() -> void:
 	# Pick from unlocked pool only.
 	var pool: Array[int] = []
@@ -309,6 +346,10 @@ func _refresh_selection() -> void:
 		_diff_buttons[i].button_pressed = (i == _selected_difficulty)
 	if _diff_summary_label != null:
 		_diff_summary_label.text = _difficulty_summary(_selected_difficulty)
+	for i in _level_buttons.size():
+		_level_buttons[i].button_pressed = (i == _selected_level)
+	if _level_summary_label != null:
+		_level_summary_label.text = RunState.LEVEL_DESCS[_selected_level]
 	_refresh_preview()
 
 func _refresh_preview() -> void:
@@ -367,6 +408,7 @@ func _on_start() -> void:
 		return
 	RunState.character = id
 	RunState.set_difficulty(_selected_difficulty)
+	RunState.start_level = _selected_level
 	RunState.save_prefs()
 	RunState.start_new_run()
 	get_tree().change_scene_to_file(GAME_SCENE)

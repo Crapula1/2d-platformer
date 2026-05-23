@@ -9,6 +9,18 @@ const DIFF_HARD := 2
 const DIFF_NIGHTMARE := 3
 const DIFFICULTY_NAMES: Array[String] = ["Easy", "Medium", "Hard", "Nightmare"]
 
+# Starting-level picks for the CharacterSelect screen. Index lines up with
+# the depth Main.gd uses to choose a level scene:
+#   0 → Level.tscn (jungle)
+#   1 → Level2.tscn (industrial)
+#   2 → ProceduralLevel.tscn (procedural loop starts here)
+const LEVEL_NAMES: Array[String] = ["Jungle", "Industrial", "Procedural"]
+const LEVEL_DESCS: Array[String] = [
+	"Hand-built jungle ruins. The intro level.",
+	"Hand-built industrial complex. Tougher patrols.",
+	"Endless procedural runs. Scaling difficulty.",
+]
+
 # Per-tier multipliers. player_max_hp_mult scales the starting HP cap
 # (default 10), enemy_hp_mult scales every enemy's max_health on spawn,
 # enemy_speed_mult scales patrol/charge speed. Damage taken by the player
@@ -104,6 +116,10 @@ func character_scene_path(id: String) -> String:
 # Run-wide selections set on the character-select screen.
 var character: String = "marine"  # see CHARACTER_STATS keys
 var difficulty: int = DIFF_MEDIUM
+# Starting level index into LEVEL_NAMES (also = starting `depth` in Main.gd).
+# Persisted in prefs so a player who likes starting on procedural keeps that
+# choice across launches.
+var start_level: int = 0
 var player_max_hp_mult: float = 1.0
 var enemy_hp_mult: float = 1.0
 var enemy_speed_mult: float = 1.0
@@ -117,6 +133,7 @@ func load_prefs() -> void:
 		return
 	character = String(cfg.get_value("run", "character", character))
 	set_difficulty(int(cfg.get_value("run", "difficulty", difficulty)))
+	start_level = clampi(int(cfg.get_value("run", "start_level", start_level)), 0, LEVEL_NAMES.size() - 1)
 
 func get_character_stats() -> Dictionary:
 	return CHARACTER_STATS.get(character, CHARACTER_STATS["marine"])
@@ -125,11 +142,14 @@ func save_prefs() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("run", "character", character)
 	cfg.set_value("run", "difficulty", difficulty)
+	cfg.set_value("run", "start_level", start_level)
 	cfg.save(PREFS_PATH)
 
 func start_new_run() -> void:
 	is_run_active = true
-	depth = 0
+	# Honor the level picked on CharacterSelect. Restarts (R / death) also flow
+	# through here, so the player keeps re-spawning into the level they chose.
+	depth = clampi(start_level, 0, LEVEL_NAMES.size() - 1)
 	# Use the difficulty-scaled hp cap so a fresh run starts with the right
 	# max HP for the chosen tier.
 	saved_max_health = maxi(int(round(10.0 * player_max_hp_mult)), 1)

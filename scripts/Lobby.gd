@@ -34,6 +34,7 @@ func _ready() -> void:
 	Net.game_started.connect(_on_game_started)
 	_build_ui()
 	_refresh()
+	MobileUI.scale_menu(self)
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
