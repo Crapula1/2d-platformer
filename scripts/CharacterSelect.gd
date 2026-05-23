@@ -67,7 +67,7 @@ var _preview_lock: Label = null
 var _diff_summary_label: Label = null
 
 func _ready() -> void:
-	MenuBackground.show()
+	MenuBackground.show_scene("character_select")
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_selected_character = _char_index_from_id(RunState.character)
 	# If the saved pref points at a now-locked character, fall back to marine

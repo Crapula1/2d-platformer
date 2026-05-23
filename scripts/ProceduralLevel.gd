@@ -454,7 +454,7 @@ func _build_platforms_arena(_room_idx: int, offset: Vector2, _depth: int, theme:
 	return plats
 
 # Moving-platform obstacle course over pits
-func _build_platforms_gauntlet(room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
+func _build_platforms_gauntlet(_room_idx: int, offset: Vector2, _depth: int, theme: Dictionary) -> Array:
 	var plats: Array = []
 	var floor_y: float = offset.y + float(ROOM_H - FLOOR_H)
 	var inner_w: float = float(ROOM_W - WALL_W * 2) - 40.0

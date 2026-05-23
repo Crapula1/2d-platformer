@@ -42,6 +42,12 @@ var _hitstop_consumed: bool = false  # one hit-stop per swing — multi-hits don
 const HITSTOP_SCALE: float = 0.06
 const HITSTOP_TIME:  float = 0.07
 
+# Lifesteal: heal a fraction of the damage dealt on every melee connect, with
+# a floor so chip hits still feed the demon. Only the local authority heals;
+# the result replicates back through `current_health`.
+@export var lifesteal_pct: float = 0.30
+@export var lifesteal_min: int = 1
+
 func get_character_id() -> String:
 	return "greater_demon"
 
@@ -233,6 +239,7 @@ func _on_attack_hit(body: Node) -> void:
 	if body == null or body in _hit_this_swing:
 		return
 	super._on_attack_hit(body)
+	_apply_lifesteal()
 	# Spawn the burst at the enemy, not at the demon — the impact reads where
 	# the blow actually lands, which sells the connection in a way that an
 	# on-self flash can't.
@@ -242,6 +249,44 @@ func _on_attack_hit(body: Node) -> void:
 		_hitstop_consumed = true
 		_apply_hitstop()
 	_apply_shake(3.0)
+
+func _apply_lifesteal() -> void:
+	# Only the local authority owns the HP value — remote peers will see the
+	# heal through the replicated `current_health` field.
+	if not _is_local_authority() or is_dead:
+		return
+	if current_health >= max_health:
+		# Subtle nudge so the player still sees a "vampire" pulse when the
+		# heal would have been pure overflow.
+		_spawn_lifesteal_flash(0.5)
+		return
+	# Mirror Player._on_attack_hit's damage math so the leech scales with the
+	# combo stage, slide-bash bonus, and the "damage" powerup buff.
+	var cfg: Dictionary = _stage_config(attack_stage)
+	var mult: float = float(cfg.get("damage_mult", 1.0))
+	var dmg: int = int(attack_damage * mult \
+			* (active_buffs["damage"].magnitude if "damage" in active_buffs else 1.0))
+	if _slide_bash:
+		dmg = int(dmg * 1.6)
+	var heal_amt: int = maxi(int(ceil(float(dmg) * lifesteal_pct)), lifesteal_min)
+	heal(heal_amt)
+	_spawn_lifesteal_flash(1.0)
+
+func _spawn_lifesteal_flash(intensity: float) -> void:
+	# Brief blood-red pulse over the sprite so the lifesteal reads visually,
+	# scaled down on overheal. Captures the current modulate as the restore
+	# target so the attack tint (set in Player._start_attack) survives intact
+	# after the pulse fades.
+	if sprite == null:
+		return
+	var restore: Color = sprite.modulate
+	var pulse: Color = Color(0.95, 0.15, 0.20).lerp(restore, 1.0 - intensity)
+	pulse.a = restore.a
+	sprite.modulate = pulse
+	var tw := create_tween()
+	tw.set_ignore_time_scale(true)
+	tw.tween_property(sprite, "modulate", restore, 0.22) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _apply_hitstop() -> void:
 	# Tree-paused timers ignore Engine.time_scale, so the restore fires on
