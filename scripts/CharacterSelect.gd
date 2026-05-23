@@ -78,6 +78,7 @@ func _ready() -> void:
 	_selected_difficulty = RunState.difficulty
 	_build()
 	_refresh_selection()
+	MobileUI.scale_menu(self)
 
 func _char_index_from_id(id: String) -> int:
 	for i in CHARACTERS.size():

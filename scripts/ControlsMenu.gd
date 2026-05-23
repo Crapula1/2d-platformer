@@ -39,6 +39,7 @@ func _ready() -> void:
 	MenuBackground.show()
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
+	MobileUI.scale_menu(self)
 
 func _build() -> void:
 	var bg := ColorRect.new()

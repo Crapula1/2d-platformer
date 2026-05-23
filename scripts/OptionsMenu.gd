@@ -48,6 +48,7 @@ func _ready() -> void:
 	auto_aim_check.toggled.connect(_on_auto_aim)
 	back_button.pressed.connect(_on_back)
 	back_button.grab_focus()
+	MobileUI.scale_menu(self)
 
 func _refresh_volume_label() -> void:
 	volume_value.text = "%d%%" % int(round(Settings.master_volume * 100.0))

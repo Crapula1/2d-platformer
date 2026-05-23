@@ -40,6 +40,7 @@ func _ready() -> void:
 	Net.disconnected.connect(_on_disconnected)
 	Net.host_discovered.connect(_on_host_discovered)
 	Net.start_discovery_listen()
+	MobileUI.scale_menu(self)
 
 func _exit_tree() -> void:
 	Net.stop_discovery_listen()

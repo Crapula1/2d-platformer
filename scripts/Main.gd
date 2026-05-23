@@ -62,6 +62,13 @@ func _ready() -> void:
 	MenuBackground.hide()
 	if not RunState.is_run_active:
 		RunState.start_new_run()
+	# On touch devices the HUD margin block is too small to read at arm's
+	# length, and the messages are tuned for desktop FOV. Scale both up.
+	if MobileUI.is_touch():
+		var hud := $HUD as CanvasLayer
+		if hud != null:
+			hud.scale = Vector2(1.6, 1.6)
+		MobileUI.scale_menu(hud, 1.5)
 
 	# Depth 0 → hand-built Level 1 (jungle). Depth 1 → hand-built Level 2
 	# (industrial). Depth 2+ → procedural runs. This keeps the first two

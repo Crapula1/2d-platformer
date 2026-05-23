@@ -28,6 +28,8 @@ window/size/viewport_height=720
 window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="sensor_landscape"
 
 [input]
 
@@ -128,6 +130,10 @@ heavy_attack={
 ]
 }
 
+[input_devices]
+
+pointing/emulate_mouse_from_touch=false
+
 [layer_names]
 
 2d_physics/layer_1="World"
@@ -146,4 +152,5 @@ heavy_attack={
 
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
+renderer/rendering_method="mobile"
 environment/defaults/default_clear_color=Color(0.15, 0.18, 0.27, 1)

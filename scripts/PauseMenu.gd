@@ -24,6 +24,7 @@ func _ready() -> void:
 	_insert_controls_button()
 	resume_button.grab_focus()
 	get_tree().paused = true
+	MobileUI.scale_menu(self)
 
 func _insert_controls_button() -> void:
 	_controls_button = Button.new()
