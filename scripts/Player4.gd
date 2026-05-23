@@ -38,6 +38,7 @@ var _mallet: Node2D
 var _mallet_pivot: Node2D
 var _attack_shape_default_size: Vector2 = Vector2.ZERO
 var _shake_fired_this_swing: bool = false
+var _mallet_buffered: bool = false
 
 
 func get_character_id() -> String:
@@ -137,7 +138,14 @@ func _build_mallet() -> void:
 #  Attack input — bypass the 3-hit combo; every press is a mallet smash
 # ----------------------------------------------------------------------------
 func _handle_attack_input() -> void:
-	if not Input.is_action_just_pressed("attack") or is_dead or is_attacking:
+	if not Input.is_action_just_pressed("attack") or is_dead:
+		return
+	if is_attacking:
+		# Buffer the press so a tap during the swing's tail still fires the
+		# next smash. Squirrel uses its own flag instead of the base class's
+		# _attack_buffered because that one chains to attack_stage + 1 (stage
+		# 3 = stab), and squirrel only has the single stage-2 mallet smash.
+		_mallet_buffered = true
 		return
 	_start_attack(2)  # stage 2 is the mallet smash configuration below
 
@@ -181,6 +189,9 @@ func _on_attack_end() -> void:
 		(attack_shape.shape as RectangleShape2D).size = _attack_shape_default_size
 	if _mallet:
 		_mallet.visible = false
+	if _mallet_buffered:
+		_mallet_buffered = false
+		_start_attack(2)
 
 
 func _update_attack_visuals(delta: float) -> void:
