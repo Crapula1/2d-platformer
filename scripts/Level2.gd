@@ -98,6 +98,12 @@ func _ready() -> void:
 	_build_section_f_machine_gauntlet()
 	_build_section_g_control_room()
 	_build_section_h_smokestack_run()
+	# Metroidvania overlay: upper traversal route, gated exit, hidden vault.
+	# These add cross-section connections so the level reads as an
+	# interconnected map rather than a strict left-to-right corridor.
+	_build_upper_route()
+	_build_gated_exit()
+	_build_hidden_vault()
 	_spawn_air_demons()
 	_setup_player_camera()
 
@@ -901,6 +907,18 @@ func _build_section_a_intake() -> void:
 
 	_add_soldier(450.0, 375.0)
 
+	# --- Climb shaft up to the upper traversal route ----------------------
+	# A stack of catwalks rising in the right side of section A. Aligns with
+	# the upper catwalk's western terminus at x≈640, y≈140.
+	_add_platform(620.0, 200.0, 80.0)
+	_add_platform(540.0, 140.0, 80.0)
+	_add_platform(640.0, 80.0, 80.0)  # meets the upper catwalk entry
+	_add_coin(660.0, 170.0)
+	_add_coin(580.0, 110.0)
+	_add_coin(680.0, 50.0)
+	# Painted "UP" marker on the wall behind the climb
+	_add_arrow_sign(610.0, 168.0)
+
 # -----------------------------------------------------------------------------
 # Section B — Acid pit (700..1400)
 # Spike floor with hot under-glow, two moving conveyor platforms, fire vent.
@@ -1234,8 +1252,163 @@ func _build_section_h_smokestack_run() -> void:
 	_add_coin(7220.0, 374.0)
 	_add_coin(7260.0, 374.0)
 	_add_coin(7300.0, 374.0)
+	# Exit is now placed by _build_gated_exit() so it can be locked behind a lever.
 
+# =============================================================================
+# Metroidvania overlay
+# =============================================================================
+# These three methods convert the linear corridor into an interconnected map:
+#   * _build_upper_route   — long catwalk at y≈80..150 spanning sections B..F,
+#                            with dropdown shortcuts back to ground and the
+#                            Exit Key lever at its eastern terminus.
+#   * _build_gated_exit    — door blocking the H exit until Exit Key is flipped.
+#   * _build_hidden_vault  — alcove door near start, lever buried at level end,
+#                            rewards backtracking with a powerup + coin stash.
+# -----------------------------------------------------------------------------
+
+func _build_upper_route() -> void:
+	# Western entry — meets the ladder from section A at x≈640, y=80.
+	# Catwalk segments are short with gaps that demand running jumps but no
+	# wall-jump (kept reachable without ability upgrades).
+	var segs: Array = [
+		Vector2(720.0,  88.0),    # over section B acid pit (west)
+		Vector2(880.0,  72.0),
+		Vector2(1040.0, 88.0),    # over section B acid pit (east)
+		Vector2(1220.0, 104.0),
+		Vector2(1400.0, 120.0),   # arrives over section C gantry top
+		Vector2(1620.0, 120.0),
+		Vector2(1840.0, 110.0),
+		Vector2(2060.0, 120.0),   # over section D pit zone
+		Vector2(2280.0, 130.0),
+		Vector2(2500.0, 120.0),
+		Vector2(2720.0, 130.0),   # over section D east
+		Vector2(2940.0, 120.0),   # arrives at section E
+		Vector2(3160.0, 110.0),
+		Vector2(3380.0, 100.0),
+		Vector2(3600.0, 110.0),   # over section F machine gauntlet
+		Vector2(3820.0, 100.0),
+		Vector2(4040.0, 110.0),
+		Vector2(4260.0, 100.0),
+		Vector2(4480.0, 120.0),   # arrives at section G control room
+	]
+	for s in segs:
+		_add_platform(s.x, s.y, 120.0)
+
+	# Coin breadcrumbs along the upper route — fewer than ground so the
+	# reward is the powerup + key, not raw coin density.
+	for s in segs:
+		_add_coin(s.x + 56.0, s.y - 18.0)
+	_add_coin_arc(1500.0, 80.0, 5, 140.0)
+	_add_coin_arc(3270.0, 70.0, 5, 140.0)
+
+	# Dropdown shortcut #1 — over section C, lands on the section C top landing.
+	_add_arrow_sign(1900.0, 100.0)
+	# (no platform here — the gap between segs[6] and segs[7] is the drop)
+
+	# Dropdown shortcut #2 — over section F, lands on the F static platform at
+	# (4080, 380). Between segs[16] (4040,110) and segs[17] (4260,100) is the
+	# natural drop window.
+	_add_arrow_sign(4140.0, 88.0)
+
+	# Mid-route reward perch — a slightly higher alcove with a powerup over
+	# section E, defended by a turret so it's not free.
+	_add_solid(3260.0, 40.0, 96.0, 14.0, COL_PLAT, 3.0, COL_PLAT_TOP)
+	_add_powerup(3308.0, 14.0)
+	_add_turret(3308.0, 28.0)
+
+	# Coin perch over section G's reactor cliff
+	_add_solid(4520.0, 40.0, 80.0, 14.0, COL_PLAT, 3.0, COL_PLAT_TOP)
+	_add_coin_row(4540.0, 14.0, 4, 18.0)
+
+	# --- Eastern terminus: Exit Key chamber --------------------------------
+	# A small enclosed platform at the end of the upper route holding the
+	# Exit Key lever. Reached by dropping east from segs[18] onto a ledge.
+	_add_platform(4700.0, 130.0, 120.0)
+	_add_platform(4900.0, 150.0, 120.0)
+	_add_solid(5080.0, 170.0, 160.0, 14.0, COL_PLAT, 3.0, COL_PLAT_TOP)
+
+	# Decorative key-chamber walls (visual hint that this is the key)
+	var halo := ColorRect.new()
+	halo.z_index = -1
+	halo.offset_left = 5080.0
+	halo.offset_top = 100.0
+	halo.offset_right = 5240.0
+	halo.offset_bottom = 170.0
+	halo.color = Color(1.0, 0.55, 0.18, 0.18)
+	add_child(halo)
+
+	# Exit Key lever wires to the door created in _build_gated_exit().
+	# Door is at (7340, 350), so the uid is "7340_350".
+	var key_lever := LEVER_SCENE.instantiate() as Lever
+	key_lever.position = Vector2(5160.0, 162.0)
+	key_lever.name = "ExitKeyLever"
+	key_lever.connected_doors = [NodePath("../ExitGate")]
+	add_child(key_lever)
+
+	_add_coin_row(5100.0, 140.0, 6, 18.0)
+	_add_grenade_pickup(5120.0, 158.0, 2)
+
+func _build_gated_exit() -> void:
+	# Locked door across the exit corridor in section H. Opens via the Exit
+	# Key lever on the upper route. Door is wider than a normal alcove so
+	# the player visually understands it blocks progress.
+	var door := DOOR_SCENE.instantiate() as Door
+	door.name = "ExitGate"
+	door.position = Vector2(7340.0, 350.0)
+	add_child(door)
+
+	# Place the exit just past the gate.
 	_add_exit(7400.0, 370.0)
+
+	# Warning stripe + sign so players read the gate as the final lock.
+	var stripe := ColorRect.new()
+	stripe.z_index = -1
+	stripe.offset_left = 7330.0
+	stripe.offset_top = 320.0
+	stripe.offset_right = 7350.0
+	stripe.offset_bottom = 400.0
+	stripe.color = COL_NEON_ORANGE
+	add_child(stripe)
+	_add_sign(7300.0, 380.0, Color(0.90, 0.20, 0.10))
+
+func _build_hidden_vault() -> void:
+	# A small alcove behind a locked door at the FAR LEFT of section A. The
+	# door only blocks LEFTWARD travel from spawn (which is at x=80), so
+	# normal forward progression is unaffected. After clearing section H and
+	# flipping the Vault Lever, the player can backtrack all the way to
+	# spawn, walk left, and claim a powerup + coin stash.
+	var door := DOOR_SCENE.instantiate() as Door
+	door.name = "VaultDoor"
+	door.position = Vector2(50.0, 368.0)
+	add_child(door)
+
+	# Alcove contents sit on the existing section A ground (y=400).
+	_add_powerup(20.0, 374.0)
+	_add_coin_row(-10.0, 360.0, 3, 18.0)
+	_add_grenade_pickup(40.0, 372.0, 1)
+
+	# Decorative gold halo inside the vault
+	var halo := ColorRect.new()
+	halo.z_index = -1
+	halo.offset_left = -20.0
+	halo.offset_top = 330.0
+	halo.offset_right = 50.0
+	halo.offset_bottom = 400.0
+	halo.color = Color(0.95, 0.74, 0.16, 0.16)
+	add_child(halo)
+
+	# Vault Lever — placed on a small ledge above the final exit corridor in
+	# section H, so the player must clear the whole level before they can
+	# backtrack to claim the reward.
+	var vault_lever := LEVER_SCENE.instantiate() as Lever
+	vault_lever.position = Vector2(7220.0, 322.0)
+	vault_lever.name = "VaultLever"
+	vault_lever.connected_doors = [NodePath("../VaultDoor")]
+	add_child(vault_lever)
+
+	# Small perch for the vault lever so it's visible above the floor coins.
+	_add_solid(7180.0, 340.0, 80.0, 14.0, COL_PLAT, 3.0, COL_PLAT_TOP)
+	_add_sign(7220.0, 332.0, Color(0.95, 0.74, 0.16))
 
 # -----------------------------------------------------------------------------
 # Camera limits — match the sealed world bounds so the camera can pan the

@@ -19,6 +19,9 @@ const PLAYER_SCENE           := preload("res://scenes/Player.tscn")
 const MOVING_PLATFORM_SCRIPT := preload("res://scripts/MovingPlatform.gd")
 const BREAK_PLATFORM_SCRIPT  := preload("res://scripts/BreakPlatform.gd")
 const ROOM_PORTAL_SCRIPT     := preload("res://scripts/RoomPortal.gd")
+const GRASS_TEX              := preload("res://assets/sprites/grass.jpg")
+const GRASS_TILE_SIZE: float = 48.0
+const GRASS_STRIP_H: float   = 14.0
 
 var _rooms: Array = []
 var _cam: Camera2D = null
@@ -218,10 +221,10 @@ func _build_room_geometry(idx: int, offset: Vector2, door_left_y: float, door_ri
 	for pit: Dictionary in sorted_pits:
 		var px: float = pit["x"]
 		if cur_x < px:
-			_build_floor_seg(cur_x, floor_y, px - cur_x, gc)
+			_build_floor_seg(cur_x, floor_y, px - cur_x, gc, theme)
 		cur_x = px + float(pit["w"])
 	if cur_x < floor_end:
-		_build_floor_seg(cur_x, floor_y, floor_end - cur_x, gc)
+		_build_floor_seg(cur_x, floor_y, floor_end - cur_x, gc, theme)
 
 	if door_left_y > 0.0:
 		_build_wall_with_door(idx, offset, true, door_left_y, wc, room)
@@ -234,14 +237,30 @@ func _build_room_geometry(idx: int, offset: Vector2, door_left_y: float, door_ri
 		_make_solid_rect(Vector2(offset.x + float(ROOM_W - WALL_W), offset.y),
 				float(WALL_W), float(ROOM_H), wc)
 
-func _build_floor_seg(x: float, y: float, w: float, gc: Color) -> void:
+func _build_floor_seg(x: float, y: float, w: float, gc: Color, theme: Dictionary) -> void:
 	_make_solid_rect(Vector2(x, y), w, float(FLOOR_H), gc)
-	var fhl := ColorRect.new()
-	fhl.offset_left = x; fhl.offset_top = y
-	fhl.offset_right = x + w; fhl.offset_bottom = y + 3.0
-	fhl.color = Color(gc.r + 0.07, gc.g + 0.07, gc.b + 0.07)
-	fhl.z_index = 1
-	add_child(fhl)
+	if theme["id"] == "forest":
+		_add_grass_strip(self, x, y - GRASS_STRIP_H + 2.0, w, GRASS_STRIP_H, 1)
+	else:
+		var fhl := ColorRect.new()
+		fhl.offset_left = x; fhl.offset_top = y
+		fhl.offset_right = x + w; fhl.offset_bottom = y + 3.0
+		fhl.color = Color(gc.r + 0.07, gc.g + 0.07, gc.b + 0.07)
+		fhl.z_index = 1
+		add_child(fhl)
+
+func _add_grass_strip(parent: Node, x: float, y: float, w: float, h: float, z: int = 0) -> void:
+	var s := Sprite2D.new()
+	s.texture = GRASS_TEX
+	s.centered = false
+	s.position = Vector2(x, y)
+	s.region_enabled = true
+	s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	var scale_f: float = GRASS_TILE_SIZE / float(GRASS_TEX.get_height())
+	s.region_rect = Rect2(0.0, 0.0, w / scale_f, h / scale_f)
+	s.scale = Vector2(scale_f, scale_f)
+	s.z_index = z
+	parent.add_child(s)
 
 func _build_wall_with_door(room_idx: int, offset: Vector2, is_left: bool,
 		door_center_y: float, wc: Color, room: Dictionary) -> void:
@@ -758,21 +777,12 @@ func _add_plat_deco(x: float, y: float, w: float, theme: Dictionary) -> void:
 		"ruins":   _plat_ruins(x, y, w, theme, root)
 
 func _plat_forest(x: float, y: float, w: float, t: Dictionary, root: Node2D) -> void:
-	# Bright grass strip along top
-	_deco_rect(root, x, y - 3.0, w, 3.0, t["c1"])
-	# Grass blades
-	var blades := int(w / 10.0)
-	for i in range(blades):
-		if randf() < 0.45:
-			continue
-		var bx: float = x + float(i) * 10.0 + randf_range(1.0, 7.0)
-		var bh: float = randf_range(5.0, 11.0)
-		_deco_rect(root, bx, y - 3.0 - bh, randf_range(2.0, 3.0), bh,
-				t["c2"] if randf() < 0.4 else t["c1"])
+	# Tiled grass texture along top
+	_add_grass_strip(root, x, y - GRASS_STRIP_H + 2.0, w, GRASS_STRIP_H)
 	# Occasional flower or mushroom
 	if randf() < 0.35:
 		var fx: float = x + randf_range(6.0, w - 6.0)
-		_deco_rect(root, fx - 2.0, y - 11.0, 4.0, 8.0, t["c3"])
+		_deco_rect(root, fx - 2.0, y - GRASS_STRIP_H - 8.0, 4.0, 8.0, t["c3"])
 
 func _plat_cave(x: float, y: float, w: float, t: Dictionary, root: Node2D) -> void:
 	# Glowing moss strip

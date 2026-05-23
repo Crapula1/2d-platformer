@@ -514,6 +514,7 @@ func _handle_jump_logic() -> void:
 			jump_buffer_timer = 0
 			coyote_timer = 0
 			play_voice(&"jump")
+			Sfx.play(&"jump")
 		elif jumps_remaining > 0:
 			velocity.y = double_jump_velocity
 			jumps_remaining -= 1
@@ -521,6 +522,7 @@ func _handle_jump_logic() -> void:
 			_spawn_double_jump_effect()
 			_jetpack_armed = true
 			play_voice(&"jump")
+			Sfx.play(&"double_jump")
 
 func _handle_grenade_input() -> void:
 	if Input.is_action_just_pressed("cycle_grenade"):
@@ -583,6 +585,10 @@ func _start_attack(stage: int) -> void:
 	var cfg: Dictionary = _stage_config(stage)
 	attack_timer = float(cfg["duration"])
 	attack_shape.disabled = false
+	match stage:
+		2: Sfx.play(&"attack2")
+		3: Sfx.play(&"attack3")
+		_: Sfx.play(&"attack")
 
 	# Aim the swing toward the mouse cursor. Horizontal facing snaps to the
 	# aim direction (so the visible swing goes the same way), and the hitbox
@@ -800,6 +806,7 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 		_die()
 	else:
 		play_voice(&"hurt")
+		Sfx.play(&"hurt")
 
 func _die() -> void:
 	is_dead = true
@@ -808,6 +815,7 @@ func _die() -> void:
 	sprite.modulate = Color(0.5, 0.5, 0.5)
 	_apply_shake(12.0)
 	play_voice(&"die")
+	Sfx.play(&"die")
 	died.emit()
 
 var _allowed_weapons: PackedStringArray = PackedStringArray(["rifle", "shotgun"])
@@ -1045,6 +1053,7 @@ func _fire_rifle(muzzle: Vector2, dir: Vector2) -> void:
 	bullet.global_position = muzzle
 	bullet.max_range = bullet_range
 	bullet.setup(dir, bullet_speed, bullet_damage)
+	Sfx.play(&"shoot")
 
 func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
 	# 2x2 grid of parallel pellets. Lateral axis is perpendicular to the aim
@@ -1070,6 +1079,7 @@ func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
 	# A little knockback so the shotgun has weight
 	velocity.x -= dir.x * 50.0
 	_apply_shake(2.5)
+	Sfx.play(&"shotgun")
 
 func _spawn_double_jump_effect() -> void:
 	sprite.scale = Vector2(0.39, 0.21)
