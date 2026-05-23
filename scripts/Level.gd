@@ -157,30 +157,11 @@ func _spawn_winged_demons() -> void:
 
 	# --- Greater Demons (heavier tier, wide cleave) -------------------------
 	# Infernal — patrols the airspace at the section D/E transition.
-	_add_greater_demon(
-		2900.0, 130.0,
-		Color(0.55, 0.10, 0.12),   # body
-		Color(0.28, 0.05, 0.08),   # body_dark
-		Color(0.18, 0.04, 0.08),   # wings
-		Color(0.08, 0.04, 0.04),   # horns
-		Color(1.0, 0.55, 0.15),    # rune — molten orange
-		Color(1.0, 0.85, 0.30),    # eye  — burning amber
-		Color(0.92, 0.94, 1.0),    # sword
-		Color(0.10, 0.04, 0.04, 0.85),  # cape
-		24, 460.0, 130.0)
+	_add_greater_demon(2900.0, 130.0, Color.WHITE, 24, 460.0, 130.0)
 
 	# Abyssal — final guard at the end of section H, just before the exit.
-	_add_greater_demon(
-		5780.0, 150.0,
-		Color(0.15, 0.10, 0.30),   # body  — abyssal indigo
-		Color(0.08, 0.05, 0.18),   # body_dark
-		Color(0.05, 0.03, 0.14),   # wings — void purple
-		Color(0.04, 0.02, 0.08),   # horns
-		Color(0.55, 0.85, 1.0),    # rune  — ghostly cyan
-		Color(0.70, 0.90, 1.0),    # eye   — soulfire blue
-		Color(0.85, 0.95, 1.0),    # sword — ice
-		Color(0.04, 0.02, 0.10, 0.85),  # cape
-		32, 360.0, 120.0)
+	# Cool indigo modulate to distinguish from the Infernal variant.
+	_add_greater_demon(5780.0, 150.0, Color(0.55, 0.60, 1.10), 32, 360.0, 120.0)
 
 # -----------------------------------------------------------------------------
 # Background (parallax) + sky gradient
@@ -532,18 +513,13 @@ func _add_jet_trooper(x: float, y: float, hp: int = 9, patrol_w: float = 280.0, 
 	jt.patrol_height = patrol_h
 	$Enemies.add_child(jt)
 
-func _add_greater_demon(x: float, y: float, body: Color, body_dark: Color, wing: Color, horn: Color, rune: Color, eye: Color, sword: Color, cape: Color, hp: int = 24, patrol_w: float = 380.0, patrol_h: float = 100.0) -> void:
+func _add_greater_demon(x: float, y: float, tint: Color = Color.WHITE, hp: int = 24, patrol_w: float = 380.0, patrol_h: float = 100.0) -> void:
 	# Greater Demon mini-boss — heavier than WingedDemon, wide cleave.
+	# `tint` is applied as a sprite modulate so variants (Infernal, Abyssal)
+	# can still look distinct over the shared sprite sheet.
 	var d := GREATER_DEMON_SCENE.instantiate() as GreaterDemon
 	d.position = Vector2(x, y)
-	d.tint = body
-	d.tint_dark = body_dark
-	d.wing_color = wing
-	d.horn_color = horn
-	d.rune_color = rune
-	d.eye_color = eye
-	d.sword_color = sword
-	d.cape_color = cape
+	d.sprite_tint = tint
 	d.max_health = hp
 	d.patrol_width = patrol_w
 	d.patrol_height = patrol_h

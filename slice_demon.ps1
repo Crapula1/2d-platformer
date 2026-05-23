@@ -1,253 +1,297 @@
 Add-Type -AssemblyName System.Drawing
 
-$src = "C:\Users\brade\Downloads\ChatGPT Image May 20, 2026, 10_21_19 PM.png"
-$outDir = "C:\Users\brade\projects\2d-platformer\assets\sprites\greater_demon"
-$labelSkipX = 140
-$threshold = 20
-$minGapCols = 1
+# Slice the GreaterDemon sprite sheet.
+# Hand-tuned for the 1536x1024 sheet:
+#   C:\Users\brade\Downloads\8170d524-6985-44f5-8048-bf8e638d78e2 (1).png
+#
+# Two-pass: pass 1 crops + cleans each frame and locates the demon-body
+# anchor (bbox center of the largest blob). Pass 2 paints every frame onto
+# a shared canvas with that anchor at a shared point, so the demon body
+# stays put across frames and across direction flips.
+$src = "C:\Users\brade\Downloads\a697a877-f7b2-484e-98e3-9e1d6d1e6552.png"
+$outDir = "C:\Users\brade\Desktop\2d-platformer\assets\sprites\greater_demon"
+$threshold = 8
+$nearRadius = 8
 
-# Row centers detected from label positions (see probe2.ps1)
-$rows = @(
-  @{ name = "idle";         center = 92;   count = 4 },
-  @{ name = "walk";         center = 230;  count = 7 },
-  @{ name = "run";          center = 371;  count = 6 },
-  @{ name = "lunge";        center = 504;  count = 4 },
-  @{ name = "lunge_impact"; center = 629;  count = 1 },
-  @{ name = "cleave";       center = 800;  count = 5 },
-  @{ name = "hurt";         center = 954;  count = 3 },
-  @{ name = "die";          center = 1091; count = 6 }
-)
-
-$bmp = [System.Drawing.Bitmap]::new($src)
-$w = $bmp.Width; $h = $bmp.Height
-$rect = [System.Drawing.Rectangle]::new(0, 0, $w, $h)
-$data = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
-$stride = $data.Stride
-$bytes = New-Object byte[] ($stride * $h)
-[System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
-$bmp.UnlockBits($data)
-
-# Compute per-row Y bounds by midpoints between centers
-$bounds = @()
-for ($i = 0; $i -lt $rows.Count; $i++) {
-  $c = $rows[$i].center
-  if ($i -eq 0) { $top = 30 } else { $top = [int](($rows[$i-1].center + $c) / 2) + 1 }
-  if ($i -eq $rows.Count - 1) { $bot = $h - 1 } else { $bot = [int](($c + $rows[$i+1].center) / 2) }
-  $bounds += @{ name = $rows[$i].name; count = $rows[$i].count; y0 = $top; y1 = $bot }
+# Bounding boxes were auto-derived from per-column opaque-pixel histograms
+# of each row in the source sheet, then padded ~4 px. Each frame fully
+# encloses one demon silhouette; the cleanup pass below keeps the largest
+# connected blob and discards adjacent-frame bleed.
+$frames = @{
+  idle = @(
+    @{x0=100; x1=290; y0=34; y1=158},
+    @{x0=313; x1=504; y0=34; y1=158},
+    @{x0=535; x1=720; y0=34; y1=158},
+    @{x0=747; x1=937; y0=34; y1=158}
+  )
+  walk = @(
+    @{x0=91;   x1=259;  y0=176; y1=275},
+    @{x0=305;  x1=471;  y0=176; y1=275},
+    @{x0=520;  x1=687;  y0=176; y1=275},
+    @{x0=761;  x1=928;  y0=176; y1=275},
+    @{x0=1014; x1=1180; y0=176; y1=275},
+    @{x0=1212; x1=1379; y0=176; y1=275}
+  )
+  run = @(
+    @{x0=86;   x1=273;  y0=312; y1=426},
+    @{x0=297;  x1=488;  y0=312; y1=426},
+    @{x0=518;  x1=711;  y0=312; y1=426},
+    @{x0=747;  x1=935;  y0=312; y1=426},
+    @{x0=986;  x1=1181; y0=312; y1=426},
+    @{x0=1214; x1=1404; y0=312; y1=426}
+  )
+  lunge = @(
+    @{x0=118;  x1=274;  y0=443; y1=546},
+    @{x0=341;  x1=558;  y0=443; y1=546},
+    @{x0=594;  x1=822;  y0=443; y1=546},
+    @{x0=854;  x1=1062; y0=443; y1=546}
+  )
+  lunge_impact = @(
+    @{x0=80; x1=337; y0=555; y1=702}
+  )
+  cleave = @(
+    @{x0=609;  x1=735;  y0=555; y1=702},
+    @{x0=765;  x1=961;  y0=555; y1=702},
+    @{x0=976;  x1=1144; y0=555; y1=702},
+    @{x0=1177; x1=1385; y0=555; y1=702}
+  )
+  hurt = @(
+    @{x0=71;  x1=246; y0=708; y1=836},
+    @{x0=254; x1=382; y0=708; y1=836},
+    @{x0=422; x1=559; y0=708; y1=836}
+  )
+  die = @(
+    @{x0=93;   x1=252;  y0=862; y1=966},
+    @{x0=310;  x1=457;  y0=862; y1=966},
+    @{x0=501;  x1=656;  y0=862; y1=966},
+    @{x0=717;  x1=882;  y0=862; y1=966},
+    @{x0=924;  x1=1101; y0=862; y1=966},
+    @{x0=1163; x1=1374; y0=862; y1=966}
+  )
 }
 
-$frameInfo = @()  # for tres
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory $outDir | Out-Null }
+Get-ChildItem -Path $outDir -Filter "*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem -Path $outDir -Filter "*.png.import" -ErrorAction SilentlyContinue | Remove-Item -Force
 
-foreach ($band in $bounds) {
-  # Compute content rows within band, then pick the contiguous segment closest to band center
-  $rowHas = New-Object bool[] ($band.y1 - $band.y0 + 2)
-  for ($y = $band.y0; $y -le $band.y1; $y++) {
-    $rowOff = $y * $stride
-    $hasContent = $false
-    for ($x = $labelSkipX; $x -lt $w; $x++) {
-      $i = $rowOff + $x * 3
-      if ($bytes[$i] -gt $threshold -or $bytes[$i+1] -gt $threshold -or $bytes[$i+2] -gt $threshold) {
-        $hasContent = $true; break
-      }
-    }
-    $rowHas[$y - $band.y0] = $hasContent
-  }
-  $segments = @()
-  $inS = $false; $sStart = 0
-  for ($y = $band.y0; $y -le $band.y1; $y++) {
-    if ($rowHas[$y - $band.y0]) {
-      if (-not $inS) { $inS = $true; $sStart = $y }
-    } else {
-      if ($inS) { $segments += @{ y0 = $sStart; y1 = $y - 1 }; $inS = $false }
-    }
-  }
-  if ($inS) { $segments += @{ y0 = $sStart; y1 = $band.y1 } }
-  if ($segments.Count -eq 0) {
-    Write-Output ("ERROR: no content in band {0}" -f $band.name); continue
-  }
-  # Pick segment whose center is closest to label center
-  $best = $segments[0]; $bestD = [Math]::Abs((($best.y0 + $best.y1) / 2) - $band.center)
-  if (-not $band.center) { $center = [int](($band.y0 + $band.y1) / 2) } else { $center = $band.center }
-  # NOTE: $band has no 'center' key here — recompute from rows table
-  $rcenter = ($rows | Where-Object { $_.name -eq $band.name } | Select-Object -First 1).center
-  $best = $segments[0]; $bestD = [Math]::Abs((($best.y0 + $best.y1) / 2) - $rcenter)
-  foreach ($s in $segments) {
-    $d = [Math]::Abs((($s.y0 + $s.y1) / 2) - $rcenter)
-    if ($d -lt $bestD) { $best = $s; $bestD = $d }
-  }
-  $cy0 = $best.y0; $cy1 = $best.y1
+$bmp = [System.Drawing.Bitmap]::new($src)
 
-  # Per-column content count within band
-  $colCount = New-Object int[] $w
-  $colHas = New-Object bool[] $w
-  for ($x = $labelSkipX; $x -lt $w; $x++) {
-    $c = 0
-    for ($y = $cy0; $y -le $cy1; $y++) {
-      $i = $y * $stride + $x * 3
-      if ($bytes[$i] -gt $threshold -or $bytes[$i+1] -gt $threshold -or $bytes[$i+2] -gt $threshold) {
-        $c++
-      }
-    }
-    $colCount[$x] = $c
-    $colHas[$x] = ($c -gt 0)
-  }
-
-  # Overall content extent
-  $contentX0 = -1; $contentX1 = -1
-  for ($x = $labelSkipX; $x -lt $w; $x++) {
-    if ($colHas[$x]) { if ($contentX0 -lt 0) { $contentX0 = $x }; $contentX1 = $x }
-  }
-
-  # First pass: group cols into "content runs" using all-black gaps
-  $runs = @()
-  $inF = $false; $fStart = 0
-  for ($x = $contentX0; $x -le $contentX1; $x++) {
-    if ($colHas[$x]) {
-      if (-not $inF) { $inF = $true; $fStart = $x }
-    } else {
-      if ($inF) { $runs += @{ x0 = $fStart; x1 = $x - 1 }; $inF = $false }
-    }
-  }
-  if ($inF) { $runs += @{ x0 = $fStart; x1 = $contentX1 } }
-
-  # Drop tiny runs (label bleed / noise) less than 8 cols
-  $runs = $runs | Where-Object { ($_.x1 - $_.x0 + 1) -ge 8 }
-
-  $expected = $band.count
-  $frames = @()
-
-  # Peak-anchored cropping when multiple frames live inside one big run
-  # (handles the case where adjacent demons overlap horizontally)
-  $useDensity = $false
-  if ($runs.Count -eq 1 -and $expected -gt 1) {
-    $useDensity = $true
-  } elseif ($runs.Count -lt $expected) {
-    $useDensity = $true
-  }
-
-  if ($useDensity -and $expected -gt 1) {
-    $runsArr = @($runs)
-    $r0 = $runsArr[0].x0; $r1 = $runsArr[0].x1
-    foreach ($rr in $runsArr) {
-      if ($rr.x0 -lt $r0) { $r0 = $rr.x0 }
-      if ($rr.x1 -gt $r1) { $r1 = $rr.x1 }
-    }
-    # Equal division — demons in idle/walk/run rows are uniformly spaced
-    $segW = ($r1 - $r0 + 1) / $expected
-    for ($k = 0; $k -lt $expected; $k++) {
-      $fx0 = [int]($r0 + $k * $segW)
-      if ($k -eq $expected - 1) { $fx1 = $r1 } else { $fx1 = [int]($r0 + ($k + 1) * $segW) - 1 }
-      $frames += @{ x0 = $fx0; x1 = $fx1 }
-    }
-  }
-  elseif ($runs.Count -eq $expected) {
-    $frames = $runs
-  } elseif ($runs.Count -eq 1 -and $expected -gt 1) {
-    # Single wide run; split by valley-finding equal segments
-    $r = $runs[0]
-    $rw = $r.x1 - $r.x0 + 1
-    $segW = $rw / $expected
-    $splits = @()
-    for ($k = 1; $k -lt $expected; $k++) {
-      $target = [int]($r.x0 + $k * $segW)
-      $halfWin = [int]($segW * 0.25)
-      $lo = [Math]::Max($r.x0 + 1, $target - $halfWin)
-      $hi = [Math]::Min($r.x1 - 1, $target + $halfWin)
-      $bestX = $target; $bestC = [int]::MaxValue
-      for ($xx = $lo; $xx -le $hi; $xx++) {
-        if ($colCount[$xx] -lt $bestC) { $bestC = $colCount[$xx]; $bestX = $xx }
-      }
-      $splits += $bestX
-    }
-    $prev = $r.x0
-    foreach ($s in $splits) {
-      $frames += @{ x0 = $prev; x1 = $s - 1 }
-      $prev = $s
-    }
-    $frames += @{ x0 = $prev; x1 = $r.x1 }
-  } elseif ($runs.Count -gt $expected) {
-    # Merge smallest-gap-separated adjacent runs until count matches
-    $work = @($runs)
-    while ($work.Count -gt $expected) {
-      $bestI = 0; $bestGap = [int]::MaxValue
-      for ($k = 0; $k -lt $work.Count - 1; $k++) {
-        $gap = $work[$k+1].x0 - $work[$k].x1 - 1
-        if ($gap -lt $bestGap) { $bestGap = $gap; $bestI = $k }
-      }
-      $merged = @{ x0 = $work[$bestI].x0; x1 = $work[$bestI + 1].x1 }
-      $new = @()
-      for ($k = 0; $k -lt $work.Count; $k++) {
-        if ($k -eq $bestI) { $new += $merged }
-        elseif ($k -eq $bestI + 1) { continue }
-        else { $new += $work[$k] }
-      }
-      $work = $new
-    }
-    $frames = $work
-  } else {
-    # runs.Count < expected and > 1: split the widest runs by valleys
-    $work = New-Object System.Collections.ArrayList
-    foreach ($r in $runs) { [void]$work.Add(@{ x0 = $r.x0; x1 = $r.x1 }) }
-    while ($work.Count -lt $expected) {
-      # find widest run
-      $wi = 0; $maxW = 0
-      for ($k = 0; $k -lt $work.Count; $k++) {
-        $rw = $work[$k].x1 - $work[$k].x0 + 1
-        if ($rw -gt $maxW) { $maxW = $rw; $wi = $k }
-      }
-      $r = $work[$wi]
-      # find valley column in middle 60%
-      $lo = [int]($r.x0 + ($r.x1 - $r.x0) * 0.25)
-      $hi = [int]($r.x0 + ($r.x1 - $r.x0) * 0.75)
-      $bestX = [int](($r.x0 + $r.x1) / 2); $bestC = [int]::MaxValue
-      for ($xx = $lo; $xx -le $hi; $xx++) {
-        if ($colCount[$xx] -lt $bestC) { $bestC = $colCount[$xx]; $bestX = $xx }
-      }
-      $left = @{ x0 = $r.x0; x1 = $bestX - 1 }
-      $right = @{ x0 = $bestX; x1 = $r.x1 }
-      $work[$wi] = $left
-      $work.Insert($wi + 1, $right)
-    }
-    $frames = @($work)
-  }
-
-  Write-Output ("{0}: y={1}..{2} frames={3} expected={4}" -f $band.name, $cy0, $cy1, $frames.Count, $band.count)
-  foreach ($f in $frames) { Write-Output ("    x={0}..{1} w={2}" -f $f.x0, $f.x1, ($f.x1 - $f.x0 + 1)) }
-
-  $bh = $cy1 - $cy0 + 1
-  for ($fi = 0; $fi -lt $frames.Count; $fi++) {
-    $f = $frames[$fi]
+# ---------------------------------------------------------------------------
+# Pass 1 — crop, clean, find anchor + kept-pixel extents.
+# ---------------------------------------------------------------------------
+$processed = @()
+foreach ($name in $frames.Keys) {
+  $list = $frames[$name]
+  for ($i = 0; $i -lt $list.Count; $i++) {
+    $f = $list[$i]
     $fw = $f.x1 - $f.x0 + 1
-    $outBmp = [System.Drawing.Bitmap]::new($fw, $bh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $g = [System.Drawing.Graphics]::FromImage($outBmp)
+    $fh = $f.y1 - $f.y0 + 1
+    $out = [System.Drawing.Bitmap]::new($fw, $fh, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($out)
     $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
-    $srcRect = [System.Drawing.Rectangle]::new($f.x0, $cy0, $fw, $bh)
-    $dstRect = [System.Drawing.Rectangle]::new(0, 0, $fw, $bh)
-    $g.DrawImage($bmp, $dstRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
+    $g.DrawImage($bmp,
+      [System.Drawing.Rectangle]::new(0, 0, $fw, $fh),
+      [System.Drawing.Rectangle]::new($f.x0, $f.y0, $fw, $fh),
+      [System.Drawing.GraphicsUnit]::Pixel)
     $g.Dispose()
 
-    # turn near-black background transparent
-    $od = $outBmp.LockBits([System.Drawing.Rectangle]::new(0,0,$fw,$bh), [System.Drawing.Imaging.ImageLockMode]::ReadWrite, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $obytes = New-Object byte[] ($od.Stride * $bh)
+    $od = $out.LockBits(
+      [System.Drawing.Rectangle]::new(0,0,$fw,$fh),
+      [System.Drawing.Imaging.ImageLockMode]::ReadWrite,
+      [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $obytes = New-Object byte[] ($od.Stride * $fh)
     [System.Runtime.InteropServices.Marshal]::Copy($od.Scan0, $obytes, 0, $obytes.Length)
-    for ($yy = 0; $yy -lt $bh; $yy++) {
+    $stride2 = $od.Stride
+
+    # Knock out background; record opaque mask.
+    $opaque = New-Object bool[] ($fw * $fh)
+    for ($yy = 0; $yy -lt $fh; $yy++) {
       for ($xx = 0; $xx -lt $fw; $xx++) {
-        $i = $yy * $od.Stride + $xx * 4
-        $b = $obytes[$i]; $gr = $obytes[$i+1]; $r = $obytes[$i+2]
+        $i2 = $yy * $stride2 + $xx * 4
+        $b = $obytes[$i2]; $gr = $obytes[$i2+1]; $r = $obytes[$i2+2]
         if ($r -le $threshold -and $gr -le $threshold -and $b -le $threshold) {
-          $obytes[$i+3] = 0
+          $obytes[$i2+3] = 0
+        } else {
+          $opaque[$yy * $fw + $xx] = $true
         }
       }
     }
-    [System.Runtime.InteropServices.Marshal]::Copy($obytes, 0, $od.Scan0, $obytes.Length)
-    $outBmp.UnlockBits($od)
 
-    $outPath = Join-Path $outDir ("{0}_{1}.png" -f $band.name, $fi)
-    $outBmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
-    $outBmp.Dispose()
-    $frameInfo += @{ anim = $band.name; index = $fi; file = ("{0}_{1}.png" -f $band.name, $fi) }
+    # 8-connected components.
+    $label = New-Object int[] ($fw * $fh)
+    $compSizes = @()
+    $compCount = 0
+    $queue = New-Object int[] ($fw * $fh)
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      for ($xx = 0; $xx -lt $fw; $xx++) {
+        $idx = $yy * $fw + $xx
+        if (-not $opaque[$idx] -or $label[$idx] -ne 0) { continue }
+        $compCount++
+        $label[$idx] = $compCount
+        $head = 0; $tail = 0
+        $queue[$tail] = $idx; $tail++
+        $size = 0
+        while ($head -lt $tail) {
+          $cur = $queue[$head]; $head++
+          $size++
+          $cx2 = $cur % $fw; $cy2 = [int][Math]::Floor($cur / $fw)
+          for ($dy = -1; $dy -le 1; $dy++) {
+            $ny = $cy2 + $dy
+            if ($ny -lt 0 -or $ny -ge $fh) { continue }
+            for ($dx = -1; $dx -le 1; $dx++) {
+              if ($dx -eq 0 -and $dy -eq 0) { continue }
+              $nx = $cx2 + $dx
+              if ($nx -lt 0 -or $nx -ge $fw) { continue }
+              $n = $ny * $fw + $nx
+              if ($opaque[$n] -and $label[$n] -eq 0) {
+                $label[$n] = $compCount; $queue[$tail] = $n; $tail++
+              }
+            }
+          }
+        }
+        $compSizes += $size
+      }
+    }
+
+    $maxLabel = 0; $maxSize = 0
+    for ($k = 0; $k -lt $compSizes.Count; $k++) {
+      if ($compSizes[$k] -gt $maxSize) { $maxSize = $compSizes[$k]; $maxLabel = $k + 1 }
+    }
+
+    # Decide kept blobs: largest + anything within $nearRadius of it.
+    $near = New-Object bool[] ($fw * $fh)
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      for ($xx = 0; $xx -lt $fw; $xx++) {
+        if ($label[$yy * $fw + $xx] -ne $maxLabel) { continue }
+        $y0d = [Math]::Max(0, $yy - $nearRadius)
+        $y1d = [Math]::Min($fh - 1, $yy + $nearRadius)
+        $x0d = [Math]::Max(0, $xx - $nearRadius)
+        $x1d = [Math]::Min($fw - 1, $xx + $nearRadius)
+        for ($ay = $y0d; $ay -le $y1d; $ay++) {
+          for ($ax = $x0d; $ax -le $x1d; $ax++) {
+            $near[$ay * $fw + $ax] = $true
+          }
+        }
+      }
+    }
+    $keepBlob = New-Object bool[] ($compCount + 1)
+    $keepBlob[$maxLabel] = $true
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      for ($xx = 0; $xx -lt $fw; $xx++) {
+        $idx = $yy * $fw + $xx
+        $lab = $label[$idx]
+        if ($lab -eq 0 -or $keepBlob[$lab]) { continue }
+        if ($near[$idx]) { $keepBlob[$lab] = $true }
+      }
+    }
+    # Clear alpha of dropped blobs.
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      for ($xx = 0; $xx -lt $fw; $xx++) {
+        $idx = $yy * $fw + $xx
+        $lab = $label[$idx]
+        if ($lab -ne 0 -and -not $keepBlob[$lab]) {
+          $obytes[$yy * $stride2 + $xx * 4 + 3] = 0
+        }
+      }
+    }
+
+    # Bbox of all kept pixels → canvas extents.
+    # Anchor = densest column/row of the LARGEST blob. The demon's torso is
+    # the fattest vertical bar in the silhouette (much fatter than wings or
+    # sword); locating it column-by-column gives an anchor that sticks to
+    # the body across frames and survives direction-flips without jumping.
+    $kx0 = $fw; $ky0 = $fh; $kx1 = -1; $ky1 = -1
+    $colC = New-Object int[] $fw
+    $rowC = New-Object int[] $fh
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      for ($xx = 0; $xx -lt $fw; $xx++) {
+        $idx = $yy * $fw + $xx
+        $lab = $label[$idx]
+        if ($lab -eq 0 -or -not $keepBlob[$lab]) { continue }
+        if ($xx -lt $kx0) { $kx0 = $xx }
+        if ($yy -lt $ky0) { $ky0 = $yy }
+        if ($xx -gt $kx1) { $kx1 = $xx }
+        if ($yy -gt $ky1) { $ky1 = $yy }
+        if ($lab -eq $maxLabel) {
+          $colC[$xx]++; $rowC[$yy]++
+        }
+      }
+    }
+    # Pick the centroid of the top-N% densest columns/rows for a smoother
+    # anchor than the single peak (less sensitive to one-pixel ties).
+    $maxCol = 0
+    for ($xx = 0; $xx -lt $fw; $xx++) { if ($colC[$xx] -gt $maxCol) { $maxCol = $colC[$xx] } }
+    $colThresh = [int]($maxCol * 0.85)
+    $axNum = 0; $axDen = 0
+    for ($xx = 0; $xx -lt $fw; $xx++) {
+      if ($colC[$xx] -ge $colThresh) { $axNum += $xx * $colC[$xx]; $axDen += $colC[$xx] }
+    }
+    $anchorX = [int]($axNum / $axDen)
+
+    $maxRow = 0
+    for ($yy = 0; $yy -lt $fh; $yy++) { if ($rowC[$yy] -gt $maxRow) { $maxRow = $rowC[$yy] } }
+    $rowThresh = [int]($maxRow * 0.85)
+    $ayNum = 0; $ayDen = 0
+    for ($yy = 0; $yy -lt $fh; $yy++) {
+      if ($rowC[$yy] -ge $rowThresh) { $ayNum += $yy * $rowC[$yy]; $ayDen += $rowC[$yy] }
+    }
+    $anchorY = [int]($ayNum / $ayDen)
+
+    [System.Runtime.InteropServices.Marshal]::Copy($obytes, 0, $od.Scan0, $obytes.Length)
+    $out.UnlockBits($od)
+
+    $processed += @{
+      anim   = $name
+      index  = $i
+      bmp    = $out
+      ax     = $anchorX
+      ay     = $anchorY
+      left   = $anchorX - $kx0    # distance from anchor to left edge of kept pixels
+      right  = $kx1 - $anchorX
+      top    = $anchorY - $ky0
+      bot    = $ky1 - $anchorY
+    }
   }
 }
 
+# ---------------------------------------------------------------------------
+# Pass 2 — determine shared canvas + paint every frame with anchor aligned.
+# ---------------------------------------------------------------------------
+$maxL = 0; $maxR = 0; $maxT = 0; $maxB = 0
+foreach ($p in $processed) {
+  if ($p.left  -gt $maxL) { $maxL = $p.left }
+  if ($p.right -gt $maxR) { $maxR = $p.right }
+  if ($p.top   -gt $maxT) { $maxT = $p.top }
+  if ($p.bot   -gt $maxB) { $maxB = $p.bot }
+}
+$pad = 4
+# Make the canvas SYMMETRIC around the anchor on each axis. This is the key
+# to no-jump direction flips — flip_h mirrors the texture around its center,
+# so the anchor (= demon torso) MUST be at canvas center for the body to
+# stay in place when the sprite flips.
+$halfX = [Math]::Max($maxL, $maxR) + $pad
+$halfY = [Math]::Max($maxT, $maxB) + $pad
+$canvasW = 2 * $halfX + 1
+$canvasH = 2 * $halfY + 1
+$anchorInCanvasX = $halfX
+$anchorInCanvasY = $halfY
+Write-Output ("canvas: {0}x{1}  anchor=({2},{3})" -f $canvasW, $canvasH, $anchorInCanvasX, $anchorInCanvasY)
+
+foreach ($p in $processed) {
+  $canvas = [System.Drawing.Bitmap]::new($canvasW, $canvasH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($canvas)
+  $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+  $dstX = $anchorInCanvasX - $p.ax
+  $dstY = $anchorInCanvasY - $p.ay
+  $g.DrawImage($p.bmp, $dstX, $dstY)
+  $g.Dispose()
+
+  $path = Join-Path $outDir ("{0}_{1}.png" -f $p.anim, $p.index)
+  $canvas.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+  $canvas.Dispose()
+  $p.bmp.Dispose()
+  Write-Output ("  wrote {0}" -f (Split-Path $path -Leaf))
+}
+
 $bmp.Dispose()
-Write-Output ("Wrote {0} frames" -f $frameInfo.Count)
+Write-Output "done"

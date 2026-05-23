@@ -15,7 +15,7 @@ func _ready() -> void:
 
 func _hit(body: Node2D) -> void:
 	var dmg: int = PLAYER_DAMAGE if body is Player else ENEMY_DAMAGE
-	if body.has_method("request_damage"):
+	if body.has_method("request_damage") and multiplayer.has_multiplayer_peer():
 		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
 	elif body.has_method("take_damage"):
 		body.take_damage(dmg, global_position)

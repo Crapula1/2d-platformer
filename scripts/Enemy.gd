@@ -34,7 +34,7 @@ func _ready() -> void:
 	add_to_group("enemy")
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		return
 	if is_dead:
 		velocity.x = move_toward(velocity.x, 0, 400 * delta)
@@ -85,14 +85,20 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	velocity.x = knockback_dir * 200
 	velocity.y = -150
 
-	net_flash.rpc()
+	if multiplayer.has_multiplayer_peer():
+		net_flash.rpc()
+	else:
+		net_flash()
 
 	if current_health <= 0:
-		_net_kill.rpc()
+		if multiplayer.has_multiplayer_peer():
+			_net_kill.rpc()
+		else:
+			_die()
 
 @rpc("any_peer", "call_local", "reliable")
 func request_damage(amount: int, source_pos: Vector2) -> void:
-	if is_multiplayer_authority():
+	if Net.is_solo() or is_multiplayer_authority():
 		take_damage(amount, source_pos)
 
 @rpc("authority", "call_local", "reliable")

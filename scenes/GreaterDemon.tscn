@@ -1,6 +1,83 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=38 format=3]
 
 [ext_resource type="Script" path="res://scripts/GreaterDemon.gd" id="1_great"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/idle_0.png" id="2_idle0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/idle_1.png" id="3_idle1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/idle_2.png" id="4_idle2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/idle_3.png" id="5_idle3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_0.png" id="6_walk0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_1.png" id="7_walk1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_2.png" id="8_walk2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_3.png" id="9_walk3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_4.png" id="10_walk4"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_5.png" id="11_walk5"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_0.png" id="12_run0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_1.png" id="13_run1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_2.png" id="14_run2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_3.png" id="15_run3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_4.png" id="16_run4"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_5.png" id="17_run5"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/lunge_0.png" id="18_lunge0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/lunge_1.png" id="19_lunge1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/lunge_2.png" id="20_lunge2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/lunge_3.png" id="21_lunge3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/lunge_impact_0.png" id="23_limp0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_0.png" id="24_cl0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_1.png" id="25_cl1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_2.png" id="26_cl2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_3.png" id="27_cl3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_0.png" id="28_hurt0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_1.png" id="29_hurt1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_2.png" id="30_hurt2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_0.png" id="31_die0"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_1.png" id="32_die1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_2.png" id="33_die2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_3.png" id="34_die3"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_4.png" id="35_die4"]
+[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/die_5.png" id="36_die5"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_great"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": ExtResource("2_idle0")}, {"duration": 1.0, "texture": ExtResource("3_idle1")}, {"duration": 1.0, "texture": ExtResource("4_idle2")}, {"duration": 1.0, "texture": ExtResource("5_idle3")}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("6_walk0")}, {"duration": 1.0, "texture": ExtResource("7_walk1")}, {"duration": 1.0, "texture": ExtResource("8_walk2")}, {"duration": 1.0, "texture": ExtResource("9_walk3")}, {"duration": 1.0, "texture": ExtResource("10_walk4")}, {"duration": 1.0, "texture": ExtResource("11_walk5")}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("12_run0")}, {"duration": 1.0, "texture": ExtResource("13_run1")}, {"duration": 1.0, "texture": ExtResource("14_run2")}, {"duration": 1.0, "texture": ExtResource("15_run3")}, {"duration": 1.0, "texture": ExtResource("16_run4")}, {"duration": 1.0, "texture": ExtResource("17_run5")}],
+"loop": true,
+"name": &"run",
+"speed": 14.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("18_lunge0")}, {"duration": 1.0, "texture": ExtResource("19_lunge1")}, {"duration": 1.0, "texture": ExtResource("20_lunge2")}, {"duration": 1.0, "texture": ExtResource("21_lunge3")}],
+"loop": false,
+"name": &"stab",
+"speed": 9.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("23_limp0")}],
+"loop": false,
+"name": &"lunge_impact",
+"speed": 8.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("24_cl0")}, {"duration": 1.0, "texture": ExtResource("25_cl1")}, {"duration": 1.0, "texture": ExtResource("26_cl2")}, {"duration": 1.0, "texture": ExtResource("27_cl3")}],
+"loop": false,
+"name": &"slash",
+"speed": 12.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("28_hurt0")}, {"duration": 1.0, "texture": ExtResource("29_hurt1")}, {"duration": 1.0, "texture": ExtResource("30_hurt2")}],
+"loop": false,
+"name": &"hurt",
+"speed": 10.0
+}, {
+"frames": [{"duration": 1.0, "texture": ExtResource("31_die0")}, {"duration": 1.0, "texture": ExtResource("32_die1")}, {"duration": 1.0, "texture": ExtResource("33_die2")}, {"duration": 1.0, "texture": ExtResource("34_die3")}, {"duration": 1.0, "texture": ExtResource("35_die4")}, {"duration": 1.0, "texture": ExtResource("36_die5")}],
+"loop": false,
+"name": &"die",
+"speed": 8.0
+}]
 
 [sub_resource type="SceneReplicationConfig" id="ReplConfig_enemy"]
 properties/0/path = NodePath(".:position")
@@ -17,175 +94,28 @@ properties/3/spawn = true
 properties/3/replication_mode = 1
 
 [sub_resource type="RectangleShape2D" id="body_shape"]
-size = Vector2(24, 40)
+size = Vector2(28, 44)
 
 [sub_resource type="RectangleShape2D" id="hurt_shape"]
-size = Vector2(28, 40)
+size = Vector2(32, 44)
 
 [sub_resource type="RectangleShape2D" id="cleave_hit_shape"]
-size = Vector2(70, 40)
+size = Vector2(76, 44)
 
 [node name="GreaterDemon" type="CharacterBody2D"]
 collision_layer = 12
 collision_mask = 1
 script = ExtResource("1_great")
 
-[node name="Body" type="Node2D" parent="."]
-
-[node name="Cape" type="Polygon2D" parent="Body"]
-position = Vector2(-4, 0)
-color = Color(0.10, 0.04, 0.04, 0.85)
-polygon = PackedVector2Array(0, -10, -4, -6, -6, 0, -10, 8, -12, 14, -8, 14, -4, 8, -2, 2, 0, -4)
-
-[node name="WingL" type="Polygon2D" parent="Body"]
-position = Vector2(-4, -6)
-color = Color(0.18, 0.04, 0.08, 1)
-polygon = PackedVector2Array(0, 0, -8, -14, -22, -22, -32, -16, -38, -8, -28, -10, -20, -6, -26, 0, -18, -2, -14, 6, -22, 10, -10, 8, -4, 4)
-
-[node name="WingR" type="Polygon2D" parent="Body"]
-position = Vector2(-4, 6)
-color = Color(0.18, 0.04, 0.08, 1)
-polygon = PackedVector2Array(0, 0, -8, 14, -22, 22, -32, 16, -38, 8, -28, 10, -20, 6, -26, 0, -18, 2, -14, -6, -22, -10, -10, -8, -4, -4)
-
-[node name="Legs" type="ColorRect" parent="Body"]
-offset_left = -7.0
-offset_top = 14.0
-offset_right = 7.0
-offset_bottom = 20.0
-color = Color(0.08, 0.04, 0.06, 1)
-
-[node name="Claws" type="Polygon2D" parent="Body"]
-color = Color(0.85, 0.80, 0.75, 1)
-polygon = PackedVector2Array(-6, 20, -4, 22, -2, 20, 0, 22, 2, 20, 4, 22, 6, 20)
-
-[node name="Belt" type="ColorRect" parent="Body"]
-offset_left = -8.0
-offset_top = 10.0
-offset_right = 8.0
-offset_bottom = 14.0
-color = Color(0.16, 0.08, 0.06, 1)
-
-[node name="Torso" type="ColorRect" parent="Body"]
-offset_left = -8.0
-offset_top = -3.0
-offset_right = 8.0
-offset_bottom = 10.0
-color = Color(0.55, 0.10, 0.12, 1)
-
-[node name="ChestPlate" type="Polygon2D" parent="Body"]
-color = Color(0.20, 0.05, 0.08, 0.65)
-polygon = PackedVector2Array(-7, -2, 7, -2, 5, 7, -5, 7)
-
-[node name="ChestRune" type="Polygon2D" parent="Body"]
-color = Color(1.0, 0.55, 0.15, 1)
-polygon = PackedVector2Array(0, 0, 3, 3, 0, 6, -3, 3)
-
-[node name="ShoulderL" type="ColorRect" parent="Body"]
-offset_left = -10.0
-offset_top = -4.0
-offset_right = -7.0
-offset_bottom = 1.0
-color = Color(0.28, 0.05, 0.08, 1)
-
-[node name="ShoulderR" type="ColorRect" parent="Body"]
-offset_left = 7.0
-offset_top = -4.0
-offset_right = 10.0
-offset_bottom = 1.0
-color = Color(0.28, 0.05, 0.08, 1)
-
-[node name="Head" type="ColorRect" parent="Body"]
-offset_left = -6.0
-offset_top = -14.0
-offset_right = 6.0
-offset_bottom = -3.0
-color = Color(0.28, 0.05, 0.08, 1)
-
-[node name="JawShadow" type="ColorRect" parent="Body"]
-offset_left = -5.0
-offset_top = -5.0
-offset_right = 5.0
-offset_bottom = -3.0
-color = Color(0.05, 0.02, 0.04, 1)
-
-[node name="HornL" type="Polygon2D" parent="Body"]
-color = Color(0.08, 0.04, 0.04, 1)
-polygon = PackedVector2Array(-6, -14, -3, -14, -4, -22, -8, -20)
-
-[node name="HornR" type="Polygon2D" parent="Body"]
-color = Color(0.08, 0.04, 0.04, 1)
-polygon = PackedVector2Array(3, -14, 6, -14, 8, -20, 4, -22)
-
-[node name="HornL2" type="Polygon2D" parent="Body"]
-color = Color(0.08, 0.04, 0.04, 1)
-polygon = PackedVector2Array(-3, -14, -1, -14, -2, -18, -4, -17)
-
-[node name="HornR2" type="Polygon2D" parent="Body"]
-color = Color(0.08, 0.04, 0.04, 1)
-polygon = PackedVector2Array(1, -14, 3, -14, 4, -17, 2, -18)
-
-[node name="Eye" type="ColorRect" parent="Body"]
-offset_left = -2.0
-offset_top = -10.0
-offset_right = 4.0
-offset_bottom = -7.0
-color = Color(1.0, 0.85, 0.30, 1)
-
-[node name="FangL" type="Polygon2D" parent="Body"]
-color = Color(0.95, 0.92, 0.85, 1)
-polygon = PackedVector2Array(-3, -4, -2, -2, -1, -4)
-
-[node name="FangR" type="Polygon2D" parent="Body"]
-color = Color(0.95, 0.92, 0.85, 1)
-polygon = PackedVector2Array(1, -4, 2, -2, 3, -4)
-
-[node name="SwordPivot" type="Node2D" parent="Body"]
-position = Vector2(8, -2)
-
-[node name="SwordGlow" type="Polygon2D" parent="Body/SwordPivot"]
-color = Color(1.0, 1.0, 1.0, 0.30)
-polygon = PackedVector2Array(-2, -6, 14, -8, 28, -9, 44, -6, 54, 0, 44, 6, 28, 7, 14, 5, -2, 6)
-
-[node name="Sword" type="Polygon2D" parent="Body/SwordPivot"]
-color = Color(0.92, 0.94, 1.0, 1)
-polygon = PackedVector2Array(0, -3, 10, -5, 24, -6, 40, -4, 50, 0, 40, 4, 24, 4, 10, 2, 0, 3)
-
-[node name="SwordEdge" type="Polygon2D" parent="Body/SwordPivot"]
-color = Color(1.0, 0.55, 0.15, 0.85)
-polygon = PackedVector2Array(10, -5, 24, -6, 40, -4, 48, -1, 40, -3, 24, -5, 10, -4)
-
-[node name="SwordHilt" type="ColorRect" parent="Body/SwordPivot"]
-offset_left = -6.0
-offset_top = -5.0
-offset_right = 0.0
-offset_bottom = 5.0
-color = Color(0.25, 0.15, 0.08, 1)
-
-[node name="SwordGuard" type="ColorRect" parent="Body/SwordPivot"]
-offset_left = 0.0
-offset_top = -7.0
-offset_right = 4.0
-offset_bottom = 7.0
-color = Color(0.55, 0.40, 0.15, 1)
-
-[node name="SwordPommel" type="ColorRect" parent="Body/SwordPivot"]
-offset_left = -8.0
-offset_top = -3.0
-offset_right = -6.0
-offset_bottom = 3.0
-color = Color(0.75, 0.55, 0.20, 1)
-
-[node name="Hitbox" type="Area2D" parent="Body/SwordPivot"]
-collision_layer = 0
-collision_mask = 2
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Body/SwordPivot/Hitbox"]
-position = Vector2(25, 0)
-shape = SubResource("cleave_hit_shape")
-disabled = true
+[node name="Sprite" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+scale = Vector2(0.45, 0.45)
+sprite_frames = SubResource("SpriteFrames_great")
+animation = &"idle"
+autoplay = "idle"
 
 [node name="AlertIndicator" type="Node2D" parent="."]
-position = Vector2(0, -34)
+position = Vector2(0, -38)
 visible = false
 
 [node name="Dot" type="ColorRect" parent="AlertIndicator"]
@@ -215,6 +145,15 @@ collision_mask = 32
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox"]
 shape = SubResource("hurt_shape")
+
+[node name="CleaveHitbox" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CleaveHitbox"]
+position = Vector2(34, 0)
+shape = SubResource("cleave_hit_shape")
+disabled = true
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("ReplConfig_enemy")

@@ -77,7 +77,7 @@ func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		return
 	if is_dead:
 		velocity.y += gravity * delta
@@ -296,13 +296,19 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 
 	var knockback: Vector2 = (global_position - source_pos).normalized() * 180.0
 	velocity = velocity * 0.4 + knockback
-	net_flash.rpc()
+	if multiplayer.has_multiplayer_peer():
+		net_flash.rpc()
+	else:
+		net_flash()
 	if current_health <= 0:
-		_net_kill.rpc()
+		if multiplayer.has_multiplayer_peer():
+			_net_kill.rpc()
+		else:
+			_die()
 
 @rpc("any_peer", "call_local", "reliable")
 func request_damage(amount: int, source_pos: Vector2) -> void:
-	if is_multiplayer_authority():
+	if Net.is_solo() or is_multiplayer_authority():
 		take_damage(amount, source_pos)
 
 @rpc("authority", "call_local", "reliable")
@@ -341,8 +347,10 @@ func _die() -> void:
 	collision_mask = 1
 	# Spectacular finish — explosive effect on death.
 	var fx := EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	get_parent().add_child(fx)
-	fx.global_position = global_position
+	# Deferred — _die() may be triggered mid physics-shape query and
+	# ExplosiveEffect._ready toggles monitoring, which is forbidden then.
+	fx.position = global_position
+	get_parent().call_deferred("add_child", fx)
 	get_tree().create_timer(1.6).timeout.connect(func() -> void:
 		if is_instance_valid(self): queue_free()
 	)

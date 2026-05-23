@@ -176,6 +176,12 @@ func set_local_character(c: String) -> void:
 func is_locked(c: String) -> bool:
 	return c in LOCKED_CHARACTERS
 
+# Solo mode = no multiplayer peer attached. Shared scripts use this to skip
+# is_multiplayer_authority() checks (which error and return 0 without a peer)
+# and just treat the local node as authoritative.
+func is_solo() -> bool:
+	return not multiplayer.has_multiplayer_peer()
+
 func unlocked_characters() -> Array[String]:
 	var out: Array[String] = []
 	for c in CHARACTERS:

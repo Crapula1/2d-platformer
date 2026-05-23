@@ -28,6 +28,7 @@ var address_label: Label
 var char_tiles: Dictionary = {}  # character_name -> { panel, accent }
 
 func _ready() -> void:
+	MenuBackground.show()
 	Net.player_list_changed.connect(_refresh)
 	Net.disconnected.connect(_on_disconnected)
 	Net.game_started.connect(_on_game_started)

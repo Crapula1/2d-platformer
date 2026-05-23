@@ -627,7 +627,10 @@ func _on_attack_hit(body: Node) -> void:
 	if _slide_bash:
 		dmg = int(dmg * 1.6)
 	if body.has_method("request_damage"):
-		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+		if multiplayer.has_multiplayer_peer():
+			body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+		elif body.has_method("take_damage"):
+			body.take_damage(dmg, global_position)
 	elif body.has_method("take_damage"):
 		body.take_damage(dmg, global_position)
 

@@ -18,6 +18,7 @@ var is_overlay: bool = false
 @onready var back_button: Button = $Panel/VBox/BackButton
 
 func _ready() -> void:
+	MenuBackground.show()
 	for r in Settings.RESOLUTIONS:
 		res_option.add_item("%d x %d" % [r.x, r.y])
 	for name in Settings.WINDOW_MODE_NAMES:

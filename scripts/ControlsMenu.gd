@@ -36,6 +36,7 @@ var _row_buttons: Dictionary = {}  # action -> Button
 var _hint: Label = null
 
 func _ready() -> void:
+	MenuBackground.show()
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 

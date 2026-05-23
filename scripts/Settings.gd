@@ -261,15 +261,15 @@ func _deserialise_event(raw: Variant) -> InputEvent:
 	match String(d.get("type", "")):
 		"key":
 			var k := InputEventKey.new()
-			k.keycode = int(d.get("keycode", 0))
-			k.physical_keycode = int(d.get("physical_keycode", 0))
+			k.keycode = int(d.get("keycode", 0)) as Key
+			k.physical_keycode = int(d.get("physical_keycode", 0)) as Key
 			return k
 		"mouse":
 			var m := InputEventMouseButton.new()
-			m.button_index = int(d.get("button_index", MOUSE_BUTTON_LEFT))
+			m.button_index = int(d.get("button_index", MOUSE_BUTTON_LEFT)) as MouseButton
 			return m
 		"joybtn":
 			var j := InputEventJoypadButton.new()
-			j.button_index = int(d.get("button_index", 0))
+			j.button_index = int(d.get("button_index", 0)) as JoyButton
 			return j
 	return null

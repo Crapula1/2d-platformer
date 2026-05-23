@@ -58,6 +58,7 @@ var _pause_menu: CanvasLayer = null
 @onready var projectile_spawner: MultiplayerSpawner = $Projectiles/MultiplayerSpawner
 
 func _ready() -> void:
+	MenuBackground.hide()
 	if not RunState.is_run_active:
 		RunState.start_new_run()
 
@@ -316,7 +317,14 @@ func _spawn_projectile_node(data: Dictionary) -> Node:
 func spawn_projectile(data: Dictionary) -> void:
 	if not is_inside_tree():
 		return
-	if (not multiplayer.has_multiplayer_peer()) or multiplayer.is_server():
+	# Solo: MultiplayerSpawner.spawn() refuses to run without a peer, so add
+	# the projectile directly under the same parent it would have used.
+	if not multiplayer.has_multiplayer_peer():
+		var n := _spawn_projectile_node(data)
+		if n != null:
+			projectiles_root.add_child(n)
+		return
+	if multiplayer.is_server():
 		projectile_spawner.spawn(data)
 
 func _on_player_late_joined(peer_id: int) -> void:

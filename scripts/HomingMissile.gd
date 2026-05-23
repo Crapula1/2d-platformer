@@ -43,7 +43,7 @@ func net_setup(data: Dictionary) -> void:
 				break
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		# Clients follow synced position; flame still flickers locally.
 		if flame:
 			flame.scale = Vector2(0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.05), 1.0)
@@ -73,7 +73,7 @@ func _physics_process(delta: float) -> void:
 		flame.scale = Vector2(0.85 + 0.35 * sin(Time.get_ticks_msec() * 0.05), 1.0)
 
 func _on_body_entered(_b: Node) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		return
 	_explode()
 

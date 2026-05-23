@@ -11,7 +11,6 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_3.png" id="9_walk3"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_4.png" id="10_walk4"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_5.png" id="11_walk5"]
-[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/walk_6.png" id="12_walk6"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_0.png" id="13_run0"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_1.png" id="14_run1"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/run_2.png" id="15_run2"]
@@ -27,7 +26,6 @@
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_1.png" id="25_cl1"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_2.png" id="26_cl2"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_3.png" id="27_cl3"]
-[ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/cleave_4.png" id="28_cl4"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_0.png" id="29_hurt0"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_1.png" id="30_hurt1"]
 [ext_resource type="Texture2D" path="res://assets/sprites/greater_demon/hurt_2.png" id="31_hurt2"]
@@ -57,7 +55,7 @@ animations = [{
 "name": &"idle",
 "speed": 5.0
 }, {
-"frames": [{"duration": 1.0, "texture": ExtResource("6_walk0")}, {"duration": 1.0, "texture": ExtResource("7_walk1")}, {"duration": 1.0, "texture": ExtResource("8_walk2")}, {"duration": 1.0, "texture": ExtResource("9_walk3")}, {"duration": 1.0, "texture": ExtResource("10_walk4")}, {"duration": 1.0, "texture": ExtResource("11_walk5")}, {"duration": 1.0, "texture": ExtResource("12_walk6")}],
+"frames": [{"duration": 1.0, "texture": ExtResource("6_walk0")}, {"duration": 1.0, "texture": ExtResource("7_walk1")}, {"duration": 1.0, "texture": ExtResource("8_walk2")}, {"duration": 1.0, "texture": ExtResource("9_walk3")}, {"duration": 1.0, "texture": ExtResource("10_walk4")}, {"duration": 1.0, "texture": ExtResource("11_walk5")}],
 "loop": true,
 "name": &"walk",
 "speed": 10.0
@@ -77,7 +75,7 @@ animations = [{
 "name": &"lunge_impact",
 "speed": 8.0
 }, {
-"frames": [{"duration": 1.0, "texture": ExtResource("24_cl0")}, {"duration": 1.0, "texture": ExtResource("25_cl1")}, {"duration": 1.0, "texture": ExtResource("26_cl2")}, {"duration": 1.0, "texture": ExtResource("27_cl3")}, {"duration": 1.0, "texture": ExtResource("28_cl4")}],
+"frames": [{"duration": 1.0, "texture": ExtResource("24_cl0")}, {"duration": 1.0, "texture": ExtResource("25_cl1")}, {"duration": 1.0, "texture": ExtResource("26_cl2")}, {"duration": 1.0, "texture": ExtResource("27_cl3")}],
 "loop": false,
 "name": &"slash",
 "speed": 12.0

@@ -25,7 +25,7 @@ func _ready() -> void:
 	_start_pos = global_position
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		return
 	position += vel * delta
 	lifetime -= delta
@@ -33,7 +33,7 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 
 func _on_body_entered(_body: Node) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		return
 	queue_free()
 

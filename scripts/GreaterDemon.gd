@@ -2,23 +2,10 @@ extends CharacterBody2D
 class_name GreaterDemon
 
 # Greater Demon — heavy flying mini-boss. Slower than WingedDemon but
-# hits like a truck. Signature attack is a wide 180-degree CLEAVE that
-# arcs from overhead to forward-down through a single ease-out sweep,
-# leaving a motion-trail of fading sword ghosts so the player can read
-# the danger zone.
+# hits like a truck. Signature attack is a wide CLEAVE telegraphed by a
+# lunge wind-up; sprite animations carry the visuals.
 
 enum State { PATROL, ALERT, CHASE, WINDUP, CLEAVE, RECOVER, STAGGER, DEAD }
-
-# --- Color variant ----------------------------------------------------------
-@export var tint: Color = Color(0.55, 0.10, 0.12)
-@export var tint_dark: Color = Color(0.28, 0.05, 0.08)
-@export var wing_color: Color = Color(0.18, 0.04, 0.08)
-@export var wing_edge_color: Color = Color(0.05, 0.01, 0.03)
-@export var horn_color: Color = Color(0.08, 0.04, 0.04)
-@export var rune_color: Color = Color(1.0, 0.55, 0.15)
-@export var eye_color: Color = Color(1.0, 0.85, 0.30)
-@export var sword_color: Color = Color(0.92, 0.94, 1.0)
-@export var cape_color: Color = Color(0.10, 0.04, 0.04, 0.85)
 
 # --- Combat -----------------------------------------------------------------
 @export var max_health: int = 24
@@ -32,17 +19,27 @@ enum State { PATROL, ALERT, CHASE, WINDUP, CLEAVE, RECOVER, STAGGER, DEAD }
 @export var max_speed: float = 200.0
 @export var thrust_force: float = 700.0
 @export var damping: float = 5.0
-@export var flap_speed: float = 4.5
 @export var dive_boost: float = 1.4
 
 # --- Cleave -----------------------------------------------------------------
+# Slash anim is 4 frames at speed 12 → ~0.333s. Stab (windup) is 5 frames at
+# speed 9 → ~0.555s; windup_time is slightly longer so the last stab frame
+# *holds* for ~0.10s as anticipation before the cleave fires.
 @export var cleave_cooldown: float = 1.6
-@export var windup_time: float = 0.55     # long, telegraphed
-@export var cleave_time: float = 0.34     # sweep duration
-@export var cleave_active_start: float = 0.05
-@export var cleave_active_end: float = 0.30
-@export var trail_interval: float = 0.035
-@export var trail_lifetime: float = 0.28
+@export var windup_time: float = 0.65
+@export var cleave_time: float = 0.34
+# Active hit window aligned to slash frames 1–2 (the swing + impact frames).
+@export var cleave_active_start: float = 0.08
+@export var cleave_active_end: float = 0.25
+@export var recover_time: float = 0.32
+# Hit-stop and recoil on cleave contact.
+@export var hit_stop_time: float = 0.06
+@export var cleave_recoil: float = 180.0
+@export var cleave_shake: float = 6.0
+
+# Walk ↔ run hysteresis so the anim doesn't strobe when speed oscillates.
+@export var walk_to_run_speed: float = 130.0
+@export var run_to_walk_speed: float = 90.0
 
 # --- Patrol -----------------------------------------------------------------
 @export var patrol_width: float = 380.0
@@ -52,7 +49,13 @@ enum State { PATROL, ALERT, CHASE, WINDUP, CLEAVE, RECOVER, STAGGER, DEAD }
 @export var alert_time: float = 0.5
 @export var stagger_time: float = 0.35
 
+# Cheap variant tinting over the shared sprite sheet (e.g. Abyssal indigo).
+@export var sprite_tint: Color = Color.WHITE
+
 const EXPLOSIVE_EFFECT_SCENE = preload("res://scenes/ExplosiveEffect.tscn")
+
+# Forward offset of the cleave hitbox (relative to body center) when active.
+const CLEAVE_HIT_OFFSET_X: float = 34.0
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var state: State = State.PATROL
@@ -66,76 +69,43 @@ var alert_timer: float = 0.0
 var stagger_timer: float = 0.0
 var cleave_cd_timer: float = 0.0
 var state_timer: float = 0.0
-var trail_timer: float = 0.0
 var bob_phase: float = 0.0
 var patrol_phase: float = 0.0
-var flap_phase: float = 0.0
-var cape_phase: float = 0.0
+var breath_phase: float = 0.0
 var _hit_this_swing: bool = false
+var _hit_stop_timer: float = 0.0
+# Locked at _ready from the scene's sprite scale so idle aliveness can layer
+# subtle scale/offset on top without losing the base pose.
+var _base_scale: Vector2 = Vector2.ONE
+var _base_offset: Vector2 = Vector2.ZERO
 
-@onready var body_visual: Node2D = $Body
-@onready var torso: ColorRect = $Body/Torso
-@onready var head: ColorRect = $Body/Head
-@onready var horn_l: Polygon2D = $Body/HornL
-@onready var horn_r: Polygon2D = $Body/HornR
-@onready var horn_l2: Polygon2D = $Body/HornL2
-@onready var horn_r2: Polygon2D = $Body/HornR2
-@onready var rune: Polygon2D = $Body/ChestRune
-@onready var eye: ColorRect = $Body/Eye
-@onready var wing_l: Polygon2D = $Body/WingL
-@onready var wing_r: Polygon2D = $Body/WingR
-@onready var cape: Polygon2D = $Body/Cape
-@onready var sword_pivot: Node2D = $Body/SwordPivot
-@onready var sword: Polygon2D = $Body/SwordPivot/Sword
-@onready var sword_glow: Polygon2D = $Body/SwordPivot/SwordGlow
-@onready var sword_edge: Polygon2D = $Body/SwordPivot/SwordEdge
-@onready var sword_hitbox: Area2D = $Body/SwordPivot/Hitbox
-@onready var sword_hitbox_shape: CollisionShape2D = $Body/SwordPivot/Hitbox/CollisionShape2D
+@onready var sprite: AnimatedSprite2D = $Sprite
 @onready var alert_indicator: Node2D = $AlertIndicator
 @onready var sight_ray: RayCast2D = $SightRay
-
-static var SWORD_POLY: PackedVector2Array = PackedVector2Array([
-	Vector2(0, -3), Vector2(10, -5), Vector2(24, -6), Vector2(40, -4),
-	Vector2(50, 0), Vector2(40, 4), Vector2(24, 4), Vector2(10, 2), Vector2(0, 3),
-])
+@onready var cleave_hitbox: Area2D = $CleaveHitbox
+@onready var cleave_hitbox_shape: CollisionShape2D = $CleaveHitbox/CollisionShape2D
 
 func _ready() -> void:
 	current_health = max_health
 	start_position = global_position
 	bob_phase = randf() * TAU
-	flap_phase = randf() * TAU
-	cape_phase = randf() * TAU
+	breath_phase = randf() * TAU
 	add_to_group("enemy")
 	_find_player()
-	_apply_tint()
-	sword_hitbox_shape.set_deferred("disabled", true)
-	sword_hitbox.body_entered.connect(_on_sword_hit)
-	sword_hitbox.area_entered.connect(_on_sword_area)
-	sword_pivot.rotation = -PI / 2.2
-
-func _apply_tint() -> void:
-	torso.color = tint
-	head.color = tint_dark
-	horn_l.color = horn_color
-	horn_r.color = horn_color
-	horn_l2.color = horn_color
-	horn_r2.color = horn_color
-	rune.color = rune_color
-	eye.color = eye_color
-	wing_l.color = wing_color
-	wing_r.color = wing_color
-	cape.color = cape_color
-	sword.color = sword_color
-	sword_edge.color = Color(rune_color.r, rune_color.g, rune_color.b, 0.85)
-	sword_glow.color = Color(sword_color.r, sword_color.g, sword_color.b, 0.35)
+	cleave_hitbox_shape.set_deferred("disabled", true)
+	cleave_hitbox.body_entered.connect(_on_sword_hit)
+	cleave_hitbox.area_entered.connect(_on_sword_area)
+	_base_scale = sprite.scale
+	_base_offset = sprite.offset
+	sprite.modulate = sprite_tint
+	sprite.play(&"idle")
 
 func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
-		if has_method("_update_visuals"):
-			_update_visuals(delta)
+	if not Net.is_solo() and not is_multiplayer_authority():
+		_update_visuals(delta)
 		return
 	if is_dead:
 		velocity.y += gravity * delta
@@ -153,16 +123,15 @@ func _physics_process(delta: float) -> void:
 	velocity.y = clampf(velocity.y, -max_speed * dive_boost, max_speed * dive_boost)
 	move_and_slide()
 	_update_visuals(delta)
-	_update_trail(delta)
 
 func _update_timers(delta: float) -> void:
 	bob_phase += delta * 2.4
+	breath_phase += delta * 1.6  # slower than bob; chest-rise cadence
 	patrol_phase += delta * patrol_speed * TAU
-	flap_phase += delta * flap_speed
-	cape_phase += delta * 3.0
 	if alert_timer > 0: alert_timer -= delta
 	if stagger_timer > 0: stagger_timer -= delta
 	if cleave_cd_timer > 0: cleave_cd_timer -= delta
+	if _hit_stop_timer > 0: _hit_stop_timer -= delta
 	state_timer += delta
 
 func _set_state(new_state: State) -> void:
@@ -173,23 +142,38 @@ func _set_state(new_state: State) -> void:
 	match state:
 		State.PATROL:
 			alert_indicator.visible = false
+			_play(&"idle")
 		State.ALERT:
 			alert_timer = alert_time
 			alert_indicator.visible = true
+			_play(&"idle")
 		State.CHASE:
 			alert_indicator.visible = false
+			_play(&"walk")
 		State.WINDUP:
 			_hit_this_swing = false
+			_play(&"stab")
 		State.CLEAVE:
-			sword_hitbox_shape.set_deferred("disabled", false)
-			trail_timer = 0.0
+			cleave_hitbox_shape.set_deferred("disabled", false)
+			_play(&"slash")
 		State.RECOVER:
-			sword_hitbox_shape.set_deferred("disabled", true)
+			cleave_hitbox_shape.set_deferred("disabled", true)
 			cleave_cd_timer = cleave_cooldown
+			# Follow-through: kick velocity backward off the swing so the demon
+			# recoils rather than just stopping dead.
+			velocity = Vector2(-float(direction) * cleave_recoil, -40.0)
+			_play(&"idle")
 		State.STAGGER:
-			sword_hitbox_shape.set_deferred("disabled", true)
+			cleave_hitbox_shape.set_deferred("disabled", true)
+			_play(&"hurt")
+		State.DEAD:
+			_play(&"die")
 		_:
 			pass
+
+func _play(anim: StringName) -> void:
+	if sprite.animation != anim:
+		sprite.play(anim)
 
 func _update_state() -> void:
 	if stagger_timer > 0 and state != State.STAGGER and state not in [State.WINDUP, State.CLEAVE]:
@@ -221,7 +205,7 @@ func _update_state() -> void:
 			if state_timer >= cleave_time:
 				_set_state(State.RECOVER)
 		State.RECOVER:
-			if state_timer >= 0.32:
+			if state_timer >= recover_time:
 				_set_state(State.CHASE)
 		State.STAGGER:
 			if stagger_timer <= 0:
@@ -305,13 +289,19 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 		stagger_timer = stagger_time
 	var knockback: Vector2 = (global_position - source_pos).normalized() * 120.0
 	velocity = velocity * 0.65 + knockback
-	net_flash.rpc()
+	if multiplayer.has_multiplayer_peer():
+		net_flash.rpc()
+	else:
+		net_flash()
 	if current_health <= 0:
-		_net_kill.rpc()
+		if multiplayer.has_multiplayer_peer():
+			_net_kill.rpc()
+		else:
+			_die()
 
 @rpc("any_peer", "call_local", "reliable")
 func request_damage(amount: int, source_pos: Vector2) -> void:
-	if is_multiplayer_authority():
+	if Net.is_solo() or is_multiplayer_authority():
 		take_damage(amount, source_pos)
 
 @rpc("authority", "call_local", "reliable")
@@ -326,31 +316,36 @@ func net_flash() -> void:
 func stun(duration: float) -> void:
 	if is_dead: return
 	stagger_timer = maxf(stagger_timer, duration)
-	body_visual.modulate = Color(0.45, 0.85, 2.0)
+	sprite.modulate = Color(0.45, 0.85, 2.0)
 	get_tree().create_timer(0.12).timeout.connect(func() -> void:
 		if is_instance_valid(self) and not is_dead:
-			body_visual.modulate = Color.WHITE
+			sprite.modulate = sprite_tint
 	)
 
 func _flash_hit() -> void:
-	body_visual.modulate = Color(2.5, 2.5, 2.5)
+	sprite.modulate = Color(2.5, 2.5, 2.5)
 	get_tree().create_timer(0.07).timeout.connect(func() -> void:
 		if is_instance_valid(self) and not is_dead:
-			body_visual.modulate = Color.WHITE
+			sprite.modulate = sprite_tint
 	)
 
 func _die() -> void:
 	is_dead = true
-	body_visual.modulate = Color(0.4, 0.4, 0.4)
+	_set_state(State.DEAD)
+	sprite.modulate = Color(0.85, 0.85, 0.85)
 	alert_indicator.visible = false
-	sword_hitbox_shape.set_deferred("disabled", true)
+	cleave_hitbox_shape.set_deferred("disabled", true)
 	$CollisionShape2D.set_deferred("disabled", true)
 	$Hurtbox/CollisionShape2D.set_deferred("disabled", true)
 	collision_layer = 0
 	collision_mask = 1
 	var fx := EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	get_parent().add_child(fx)
-	fx.global_position = global_position
+	# Position via local (parent's frame) so we don't need the node in the
+	# tree to resolve global_position; add deferred because _die() can be
+	# invoked mid physics-shape query (Player3 immediate-hit pathway), and
+	# ExplosiveEffect._ready toggles monitoring which is forbidden mid-flush.
+	fx.position = global_position
+	get_parent().call_deferred("add_child", fx)
 	# Second explosion staggered for "big enemy" feel
 	get_tree().create_timer(0.2).timeout.connect(func() -> void:
 		if not is_instance_valid(self): return
@@ -365,91 +360,66 @@ func _die() -> void:
 func _on_sword_hit(body: Node) -> void:
 	if _hit_this_swing: return
 	if body is Player and body.has_method("request_damage"):
-		body.request_damage.rpc_id(body.get_multiplayer_authority(), cleave_damage, global_position)
+		_deal_damage(body, cleave_damage)
 		_hit_this_swing = true
+		_on_cleave_landed(body)
 
 func _on_sword_area(area: Area2D) -> void:
 	if _hit_this_swing: return
 	var p := area.get_parent()
 	if p is Player and p.has_method("request_damage"):
-		p.request_damage.rpc_id(p.get_multiplayer_authority(), cleave_damage, global_position)
+		_deal_damage(p, cleave_damage)
 		_hit_this_swing = true
+		_on_cleave_landed(p)
 
-func _update_visuals(delta: float) -> void:
-	var target_facing := float(direction)
-	body_visual.scale.x = lerpf(body_visual.scale.x, target_facing, minf(delta * 12.0, 1.0))
+func _deal_damage(target: Node, dmg: int) -> void:
+	if multiplayer.has_multiplayer_peer():
+		target.request_damage.rpc_id(target.get_multiplayer_authority(), dmg, global_position)
+	elif target.has_method("take_damage"):
+		target.take_damage(dmg, global_position)
+
+func _on_cleave_landed(victim: Node) -> void:
+	# Brief hit-stop pause and a camera kick when the cleave actually connects.
+	_hit_stop_timer = hit_stop_time
+	if victim and victim.has_method("_apply_shake"):
+		victim.call("_apply_shake", cleave_shake)
+
+func _update_visuals(_delta: float) -> void:
+	# Facing — sheet draws the demon facing right by default; mirror when
+	# moving left. The cleave hitbox always extends in the direction of motion.
+	sprite.flip_h = direction < 0
+	cleave_hitbox_shape.position.x = CLEAVE_HIT_OFFSET_X * float(direction)
 
 	if is_dead:
 		return
 
-	# Wing flap — slower and grander than WingedDemon
-	var flap: float = sin(flap_phase) * 0.7
-	wing_l.rotation = -flap
-	wing_r.rotation = flap
-	body_visual.position.y = sin(flap_phase) * -2.0
-	# Cape sways with motion and bob
-	cape.rotation = sin(cape_phase) * 0.10 + clampf(velocity.x * 0.001, -0.25, 0.25) * 0.4
+	# Hit-stop: freeze the sprite animation for a beat after a cleave lands.
+	sprite.speed_scale = 0.0 if _hit_stop_timer > 0.0 else 1.0
 
-	# Eye glow shifts by state
-	match state:
-		State.PATROL:    eye.color = eye_color.darkened(0.30)
-		State.ALERT:     eye.color = Color(1.0, 0.55, 0.15)
-		State.CHASE:     eye.color = Color(1.0, 0.30, 0.10)
-		State.WINDUP:    eye.color = Color(1.0, 0.95, 0.45)
-		State.CLEAVE:    eye.color = Color(1.0, 1.0, 0.85)
-		State.STAGGER:   eye.color = Color(0.4, 0.5, 0.6)
-		_:               pass
+	# Gate the cleave hitbox to the active window of the swing.
+	if state == State.CLEAVE:
+		var active: bool = state_timer >= cleave_active_start and state_timer <= cleave_active_end
+		cleave_hitbox_shape.set_deferred("disabled", not active)
 
-	# Sword animation — the cleave is the showcase: from way overhead
-	# (-PI/2.2 ~ -82deg) through a wide arc to forward-down (+PI/3 ~ +60deg).
-	var rest_rot: float = -PI / 2.2          # raised behind shoulder
-	var raised_rot: float = -PI * 0.95       # straight up + slightly back
-	var end_rot: float = PI / 3.0            # forward-down past horizontal
-	var target_rot: float = rest_rot
-	match state:
-		State.WINDUP:
-			var t: float = clampf(state_timer / windup_time, 0.0, 1.0)
-			# Slow ease into raised
-			t = t * t * (3.0 - 2.0 * t)   # smoothstep
-			target_rot = lerpf(rest_rot, raised_rot, t)
-		State.CLEAVE:
-			var t2: float = clampf(state_timer / cleave_time, 0.0, 1.0)
-			# Ease-out cubic for a heavy, fast sweep
-			t2 = 1.0 - pow(1.0 - t2, 3.0)
-			target_rot = lerpf(raised_rot, end_rot, t2)
-			# Tighten the active-window gating
-			if state_timer < cleave_active_start or state_timer > cleave_active_end:
-				sword_hitbox_shape.set_deferred("disabled", true)
-			else:
-				sword_hitbox_shape.set_deferred("disabled", false)
-		State.RECOVER:
-			var t3: float = clampf(state_timer / 0.32, 0.0, 1.0)
-			target_rot = lerpf(end_rot, rest_rot, t3)
-	sword_pivot.rotation = lerpf(sword_pivot.rotation, target_rot, minf(delta * 24.0, 1.0))
+	# Walk ↔ run hysteresis — only swap when speed crosses the *opposite*
+	# threshold, so a demon hovering at ~110 px/s doesn't strobe anims.
+	if state == State.CHASE:
+		var speed: float = velocity.length()
+		if sprite.animation == &"run":
+			if speed < run_to_walk_speed: _play(&"walk")
+		else:
+			if speed >= walk_to_run_speed: _play(&"run")
 
-	# Sword glow brightness by state for readability
-	var glow_a := 0.25
-	if state == State.WINDUP:    glow_a = 0.55
-	elif state == State.CLEAVE:  glow_a = 0.95
-	sword_glow.modulate.a = lerpf(sword_glow.modulate.a, glow_a, minf(delta * 18.0, 1.0))
-
-func _update_trail(delta: float) -> void:
-	# Spawn fading sword ghosts during the active cleave to read the sweep.
-	if state != State.CLEAVE:
-		return
-	trail_timer -= delta
-	if trail_timer > 0.0:
-		return
-	trail_timer = trail_interval
-	var ghost := Polygon2D.new()
-	ghost.polygon = SWORD_POLY
-	ghost.color = Color(sword_color.r, sword_color.g, sword_color.b, 0.55)
-	ghost.global_position = sword_pivot.global_position
-	ghost.rotation = sword_pivot.global_rotation
-	ghost.scale = sword_pivot.global_scale
-	ghost.z_index = -1
-	get_parent().add_child(ghost)
-	# Fade out + queue_free via a tween
-	var tw := create_tween()
-	tw.tween_property(ghost, "modulate:a", 0.0, trail_lifetime)
-	tw.tween_callback(ghost.queue_free)
+	# Idle aliveness — layer code-driven breathing/sway on top of the static
+	# idle frames during "calm" states. Skipped during attacks and stagger so
+	# their hand-drawn motion reads cleanly.
+	var alive_states: bool = state == State.PATROL or state == State.ALERT or state == State.RECOVER
+	if alive_states:
+		var breath: float = sin(breath_phase) * 0.012        # ±1.2% chest rise
+		var bob_y: float = sin(bob_phase) * 1.4              # subtle vertical drift
+		var sway_x: float = sin(bob_phase * 0.5) * 0.6       # weight shift side-to-side
+		sprite.scale = Vector2(_base_scale.x, _base_scale.y * (1.0 + breath))
+		sprite.offset = _base_offset + Vector2(sway_x, bob_y)
+	else:
+		sprite.scale = _base_scale
+		sprite.offset = _base_offset

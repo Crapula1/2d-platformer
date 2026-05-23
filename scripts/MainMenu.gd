@@ -28,6 +28,7 @@ var back_button: Button
 var _user_typed_ip: bool = false
 
 func _ready() -> void:
+	MenuBackground.show()
 	start_button.pressed.connect(_on_start)
 	options_button.pressed.connect(_on_options)
 	quit_button.pressed.connect(_on_quit)
@@ -183,6 +184,12 @@ func _input(event: InputEvent) -> void:
 func _on_start() -> void:
 	# Detour through the character + difficulty picker. The picker itself
 	# calls RunState.start_new_run() and loads the game scene.
+	# Drop any leftover MP peer from a prior Lobby visit so Main takes the
+	# singleplayer spawn path (which honors RunState.character). Without this,
+	# Main sees has_multiplayer_peer()==true and spawns from Net.players,
+	# which defaults to marine.
+	if multiplayer.has_multiplayer_peer():
+		Net.leave()
 	get_tree().change_scene_to_file(CHARACTER_SELECT_SCENE)
 
 func _on_options() -> void:

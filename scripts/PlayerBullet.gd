@@ -28,7 +28,7 @@ func _physics_process(delta: float) -> void:
 		queue_free()
 
 func _on_body_entered(body: Node) -> void:
-	if body.has_method("request_damage"):
+	if body.has_method("request_damage") and multiplayer.has_multiplayer_peer():
 		body.request_damage.rpc_id(body.get_multiplayer_authority(), damage, global_position)
 	elif body.has_method("take_damage"):
 		body.take_damage(damage, global_position)

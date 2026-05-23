@@ -110,7 +110,7 @@ func _find_player() -> void:
 	player = get_tree().get_first_node_in_group("player") as Player
 
 func _physics_process(delta: float) -> void:
-	if not is_multiplayer_authority():
+	if not Net.is_solo() and not is_multiplayer_authority():
 		_update_visuals(delta)
 		return
 	if is_dead:
@@ -276,13 +276,19 @@ func take_damage(amount: int, source_pos: Vector2) -> void:
 	stagger_timer = stagger_time
 	var knockback: Vector2 = (global_position - source_pos).normalized() * 200.0
 	velocity = velocity * 0.4 + knockback
-	net_flash.rpc()
+	if multiplayer.has_multiplayer_peer():
+		net_flash.rpc()
+	else:
+		net_flash()
 	if current_health <= 0:
-		_net_kill.rpc()
+		if multiplayer.has_multiplayer_peer():
+			_net_kill.rpc()
+		else:
+			_die()
 
 @rpc("any_peer", "call_local", "reliable")
 func request_damage(amount: int, source_pos: Vector2) -> void:
-	if is_multiplayer_authority():
+	if Net.is_solo() or is_multiplayer_authority():
 		take_damage(amount, source_pos)
 
 @rpc("authority", "call_local", "reliable")
@@ -320,8 +326,10 @@ func _die() -> void:
 	collision_layer = 0
 	collision_mask = 1
 	var fx := EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	get_parent().add_child(fx)
-	fx.global_position = global_position
+	# Deferred — _die() may be triggered mid physics-shape query and
+	# ExplosiveEffect._ready toggles monitoring, which is forbidden then.
+	fx.position = global_position
+	get_parent().call_deferred("add_child", fx)
 	get_tree().create_timer(1.6).timeout.connect(func() -> void:
 		if is_instance_valid(self): queue_free()
 	)
@@ -329,7 +337,7 @@ func _die() -> void:
 func _on_sword_hit(body: Node) -> void:
 	if _hit_this_swing: return
 	if body is Player and body.has_method("request_damage"):
-		body.request_damage.rpc_id(body.get_multiplayer_authority(), sword_damage, global_position)
+		_deal_damage(body, sword_damage)
 		_hit_this_swing = true
 
 func _on_sword_area(area: Area2D) -> void:
@@ -337,8 +345,14 @@ func _on_sword_area(area: Area2D) -> void:
 	if _hit_this_swing: return
 	var p := area.get_parent()
 	if p is Player and p.has_method("request_damage"):
-		p.request_damage.rpc_id(p.get_multiplayer_authority(), sword_damage, global_position)
+		_deal_damage(p, sword_damage)
 		_hit_this_swing = true
+
+func _deal_damage(target: Node, dmg: int) -> void:
+	if multiplayer.has_multiplayer_peer():
+		target.request_damage.rpc_id(target.get_multiplayer_authority(), dmg, global_position)
+	elif target.has_method("take_damage"):
+		target.take_damage(dmg, global_position)
 
 func _update_visuals(delta: float) -> void:
 	# Face flip (smooth) — also flips the sword pivot side.
