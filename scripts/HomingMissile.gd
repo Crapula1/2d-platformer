@@ -17,12 +17,18 @@ const EXPLOSIVE_EFFECT_SCENE = preload("res://scenes/ExplosiveEffect.tscn")
 var velocity: Vector2 = Vector2.ZERO
 var target: Node2D = null
 var _age: float = 0.0
+var _pending_target_peer: int = 0
 
 @onready var flame: Polygon2D = $Flame
 
 func _ready() -> void:
 	add_to_group("hazard")
 	body_entered.connect(_on_body_entered)
+	if target == null and _pending_target_peer != 0:
+		for n in get_tree().get_nodes_in_group("player"):
+			if n.get_multiplayer_authority() == _pending_target_peer:
+				target = n
+				break
 
 func setup(launch_velocity: Vector2, tgt: Node2D, dmg: int = 1) -> void:
 	velocity = launch_velocity
@@ -35,10 +41,10 @@ func net_setup(data: Dictionary) -> void:
 	velocity = Vector2(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)))
 	damage = int(data.get("damage", 1))
 	rotation = velocity.angle()
-	var target_peer: int = int(data.get("target_peer", 0))
-	if target_peer != 0:
+	_pending_target_peer = int(data.get("target_peer", 0))
+	if is_inside_tree() and _pending_target_peer != 0:
 		for n in get_tree().get_nodes_in_group("player"):
-			if n.get_multiplayer_authority() == target_peer:
+			if n.get_multiplayer_authority() == _pending_target_peer:
 				target = n
 				break
 

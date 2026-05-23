@@ -24,6 +24,7 @@ var _health_lag_tween: Tween = null
 @onready var hint_label: Label = $HUD/HintLabel
 
 const LEVEL_SCENE := preload("res://scenes/Level.tscn")
+const LEVEL2_SCENE := preload("res://scenes/Level2.tscn")
 const PROC_LEVEL_SCENE := preload("res://scenes/ProceduralLevel.tscn")
 const PAUSE_MENU_SCENE := preload("res://scenes/PauseMenu.tscn")
 const COIN_SCENE := preload("res://scenes/Coin.tscn")
@@ -62,10 +63,15 @@ func _ready() -> void:
 	if not RunState.is_run_active:
 		RunState.start_new_run()
 
-	if RunState.depth > 0:
-		_level = PROC_LEVEL_SCENE.instantiate()
-	else:
+	# Depth 0 → hand-built Level 1 (jungle). Depth 1 → hand-built Level 2
+	# (industrial). Depth 2+ → procedural runs. This keeps the first two
+	# clears of any run on authored maps before the procedural loop kicks in.
+	if RunState.depth == 0:
 		_level = LEVEL_SCENE.instantiate()
+	elif RunState.depth == 1:
+		_level = LEVEL2_SCENE.instantiate()
+	else:
+		_level = PROC_LEVEL_SCENE.instantiate()
 
 	add_child(_level)
 	move_child(_level, 0)
