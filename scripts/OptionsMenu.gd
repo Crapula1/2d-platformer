@@ -15,6 +15,7 @@ var is_overlay: bool = false
 @onready var msaa_option: OptionButton = $Panel/VBox/MsaaRow/MsaaOption
 @onready var volume_slider: HSlider = $Panel/VBox/VolumeRow/VolumeSlider
 @onready var volume_value: Label = $Panel/VBox/VolumeRow/VolumeValue
+@onready var auto_aim_check: CheckButton = $Panel/VBox/AutoAimRow/AutoAimCheck
 @onready var back_button: Button = $Panel/VBox/BackButton
 
 func _ready() -> void:
@@ -35,6 +36,7 @@ func _ready() -> void:
 	fps_option.selected = Settings.fps_index
 	msaa_option.selected = Settings.msaa_index
 	volume_slider.value = Settings.master_volume
+	auto_aim_check.button_pressed = Settings.auto_aim
 	_refresh_volume_label()
 
 	res_option.item_selected.connect(_on_res)
@@ -43,6 +45,7 @@ func _ready() -> void:
 	fps_option.item_selected.connect(_on_fps)
 	msaa_option.item_selected.connect(_on_msaa)
 	volume_slider.value_changed.connect(_on_volume)
+	auto_aim_check.toggled.connect(_on_auto_aim)
 	back_button.pressed.connect(_on_back)
 	back_button.grab_focus()
 
@@ -80,6 +83,10 @@ func _on_volume(v: float) -> void:
 	Settings.master_volume = v
 	_refresh_volume_label()
 	Settings.apply()
+	Settings.save_settings()
+
+func _on_auto_aim(pressed: bool) -> void:
+	Settings.auto_aim = pressed
 	Settings.save_settings()
 
 func _on_back() -> void:

@@ -216,6 +216,20 @@ func _ready() -> void:
 	# Hand off to the subclass for its character-specific rig (axe, claws,
 	# jet flame, etc). Base class builds nothing on its own.
 	_build_character_visuals()
+	_maybe_spawn_touch_hud()
+
+func _maybe_spawn_touch_hud() -> void:
+	if not _is_local_authority():
+		return
+	var wants_touch := DisplayServer.is_touchscreen_available() \
+		or OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
+	if not wants_touch:
+		return
+	if get_tree().root.find_child("TouchHUD", true, false) != null:
+		return
+	var hud_scene: PackedScene = load("res://scenes/TouchHUD.tscn")
+	var hud: Node = hud_scene.instantiate()
+	get_tree().root.add_child.call_deferred(hud)
 
 func _physics_process(delta: float) -> void:
 	if not _is_local_authority():
@@ -527,7 +541,7 @@ func _throw_grenade() -> void:
 	# Aim from the spawn point toward the mouse cursor. Apply a slight upward
 	# loft so close-range throws still arc, and clamp the angle so straight-down
 	# throws don't slam the grenade into the floor instantly.
-	var aim: Vector2 = get_global_mouse_position() - spawn_pos
+	var aim: Vector2 = _aim_target() - spawn_pos
 	if aim.length_squared() < 1.0:
 		aim = Vector2(1.0 if facing_right else -1.0, -0.55)
 	var dir: Vector2 = aim.normalized()
@@ -574,7 +588,7 @@ func _start_attack(stage: int) -> void:
 	# aim direction (so the visible swing goes the same way), and the hitbox
 	# is offset along the full aim vector so up/down strikes connect with
 	# enemies above or below the player too.
-	var aim_vec: Vector2 = get_global_mouse_position() - global_position
+	var aim_vec: Vector2 = _aim_target() - global_position
 	var aim: Vector2 = aim_vec.normalized() if aim_vec.length_squared() > 0.0001 \
 		else Vector2(1.0 if facing_right else -1.0, 0.0)
 	if absf(aim.x) > 0.05:
@@ -1004,9 +1018,9 @@ func _set_weapon(new_weapon: int) -> void:
 		_shoot_timer = 0.25
 
 func _shoot() -> void:
-	var mouse_pos := get_global_mouse_position()
+	var target_pos := _aim_target()
 	var muzzle := global_position + Vector2(18.0 if facing_right else -18.0, -8.0)
-	var dir := (mouse_pos - muzzle).normalized()
+	var dir := (target_pos - muzzle).normalized()
 	facing_right = dir.x >= 0.0
 
 	match weapon:
@@ -1059,3 +1073,25 @@ func _fire_shotgun(muzzle: Vector2, dir: Vector2) -> void:
 
 func _spawn_double_jump_effect() -> void:
 	sprite.scale = Vector2(0.39, 0.21)
+
+# Returns the world position the player is currently aiming at. With the
+# accessibility "auto aim" setting on (default on touch devices), this snaps
+# to the nearest living enemy within Settings.auto_aim_range; otherwise it
+# falls back to the mouse cursor.
+func _aim_target() -> Vector2:
+	if Settings != null and Settings.auto_aim:
+		var best: Node2D = null
+		var best_d2: float = Settings.auto_aim_range * Settings.auto_aim_range
+		for n in get_tree().get_nodes_in_group("enemy"):
+			if not (n is Node2D):
+				continue
+			var e := n as Node2D
+			if "is_dead" in e and bool(e.is_dead):
+				continue
+			var d2: float = global_position.distance_squared_to(e.global_position)
+			if d2 < best_d2:
+				best_d2 = d2
+				best = e
+		if best != null:
+			return best.global_position
+	return get_global_mouse_position()

@@ -38,6 +38,12 @@ var msaa_index: int = 0      # index into MSAA_NAMES
 var fps_index: int = 2       # index into FPS_NAMES — default 60
 var master_volume: float = 1.0
 
+# Accessibility: auto-aim weapons/grenades/melee at the closest enemy instead
+# of requiring precise mouse aim. Defaults ON for touch devices (no mouse).
+var auto_aim: bool = DisplayServer.is_touchscreen_available() \
+	or OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
+@export var auto_aim_range: float = 480.0
+
 # Actions that the player can rebind. Anything else (ui_*) is left alone.
 const REBINDABLE_ACTIONS: Array[String] = [
 	"move_left", "move_right", "jump", "crouch", "sprint",
@@ -72,6 +78,7 @@ func load_settings() -> void:
 	msaa_index = clampi(int(cfg.get_value("display", "msaa", msaa_index)), 0, MSAA_NAMES.size() - 1)
 	fps_index = clampi(int(cfg.get_value("display", "fps_limit", fps_index)), 0, FPS_NAMES.size() - 1)
 	master_volume = clampf(float(cfg.get_value("audio", "master_volume", master_volume)), 0.0, 1.0)
+	auto_aim = bool(cfg.get_value("accessibility", "auto_aim", auto_aim))
 
 	# Load any custom bindings the user has saved.
 	_binding_overrides.clear()
@@ -89,6 +96,7 @@ func save_settings() -> void:
 	cfg.set_value("display", "msaa", msaa_index)
 	cfg.set_value("display", "fps_limit", fps_index)
 	cfg.set_value("audio", "master_volume", master_volume)
+	cfg.set_value("accessibility", "auto_aim", auto_aim)
 	for action in REBINDABLE_ACTIONS:
 		if _binding_overrides.has(action):
 			cfg.set_value("bindings", action, _binding_overrides[action])
