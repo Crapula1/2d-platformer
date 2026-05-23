@@ -86,8 +86,8 @@ const CHARACTER_STATS: Dictionary = {
 		"attack_mult": 0.90,
 		"max_jumps": 3,
 		"jetpack_duration": 2.5,
-		"allowed_weapons": ["melee"],
-		"desc": "Humanoid squirrel with animated\nidle / walk / run / crouch / slide /\nslash / stab frames.",
+		"allowed_weapons": ["rifle", "shotgun"],
+		"desc": "Acorn gun, acorn shotgun, and a\nbig wooden mallet smash. Light,\nfast, triple-jump mobility.",
 		"scene": "res://scenes/Player4.tscn",
 	},
 }
