@@ -146,7 +146,6 @@ func _setup_singleplayer() -> void:
 		script_name = scr.resource_path
 	print("[Main] Spawned character=%s scene=%s script=%s at %s" % [
 		RunState.character, scene_path, script_name, str(spawn_xy)])
-	_flash_spawned_character_banner(RunState.character, scene_path + "\nscript=" + script_name)
 
 	# Camera limits must be applied after the player is in the tree so the
 	# Camera2D node exists and is current.
@@ -211,28 +210,6 @@ func _build_character_card() -> void:
 	name_label.add_theme_constant_override("outline_size", 4)
 	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hb.add_child(name_label)
-
-func _flash_spawned_character_banner(character_id: String, scene_path: String) -> void:
-	# Diagnostic: a 2-second banner on the HUD shows which character + scene
-	# Main actually instantiated. If you pick demon and see "MARINE" here,
-	# the bug is upstream of Main (RunState wasn't set / scene cache stale).
-	# Remove this once character select is confirmed working.
-	var overlay := CanvasLayer.new()
-	overlay.layer = 12
-	add_child(overlay)
-	var label := Label.new()
-	label.text = "SPAWNED %s\n(%s)" % [character_id.to_upper(), scene_path]
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 22)
-	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.4))
-	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	label.add_theme_constant_override("outline_size", 5)
-	label.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	label.offset_top = 70.0
-	label.offset_bottom = 130.0
-	overlay.add_child(label)
-	# Sticky for debugging — caller queue_frees the overlay manually if/when
-	# the diagnostic is no longer needed.
 
 func _scene_path_for_character(character_id: String) -> String:
 	# Single source of truth is RunState.CHARACTER_STATS[id].scene. Falling
