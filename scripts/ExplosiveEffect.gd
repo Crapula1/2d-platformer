@@ -5,6 +5,7 @@ const PLAYER_DAMAGE := 1
 const PUSH_FORCE    := 420.0
 
 func _ready() -> void:
+	add_to_group("explosive_effect")
 	collision_mask = 14  # player(2) + enemy layers(4+8)
 	monitoring = true
 	_spawn_visuals()

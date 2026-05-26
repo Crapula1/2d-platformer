@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://y15dum2kyouk"
+
+[deps]
+
+files=["res://castle_pack_names.size.translation", "res://castle_pack_names.name.translation"]
+
+source_file="res://castle_pack_names.csv"
+dest_files=["res://castle_pack_names.size.translation", "res://castle_pack_names.name.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

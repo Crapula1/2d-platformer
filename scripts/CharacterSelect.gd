@@ -223,7 +223,7 @@ func _build() -> void:
 	for i in RunState.LEVEL_NAMES.size():
 		var btn := Button.new()
 		btn.text = RunState.LEVEL_NAMES[i]
-		btn.custom_minimum_size = Vector2(140, 40)
+		btn.custom_minimum_size = Vector2(120, 40)
 		btn.add_theme_font_size_override("font_size", 15)
 		btn.toggle_mode = true
 		_style_button(btn, false)

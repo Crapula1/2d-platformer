@@ -25,6 +25,8 @@ var _health_lag_tween: Tween = null
 
 const LEVEL_SCENE := preload("res://scenes/Level.tscn")
 const LEVEL2_SCENE := preload("res://scenes/Level2.tscn")
+const LEVEL3_SCENE := preload("res://scenes/Level3.tscn")
+const LEVEL4_SCENE := preload("res://scenes/Level4.tscn")
 const PROC_LEVEL_SCENE := preload("res://scenes/ProceduralLevel.tscn")
 const PAUSE_MENU_SCENE := preload("res://scenes/PauseMenu.tscn")
 const COIN_SCENE := preload("res://scenes/Coin.tscn")
@@ -73,13 +75,17 @@ func _ready() -> void:
 			hud.scale = Vector2(1.6, 1.6)
 		MobileUI.scale_menu(hud, 1.5)
 
-	# Depth 0 → hand-built Level 1 (jungle). Depth 1 → hand-built Level 2
-	# (industrial). Depth 2+ → procedural runs. This keeps the first two
-	# clears of any run on authored maps before the procedural loop kicks in.
+	# Depth 0 → Level 1 (jungle). Depth 1 → Level 2 (industrial).
+	# Depth 2 → Level 3 (castle). Depth 3 → Level 4 (metroidvania).
+	# Depth 4+ → procedural runs.
 	if RunState.depth == 0:
 		_level = LEVEL_SCENE.instantiate()
 	elif RunState.depth == 1:
 		_level = LEVEL2_SCENE.instantiate()
+	elif RunState.depth == 2:
+		_level = LEVEL3_SCENE.instantiate()
+	elif RunState.depth == 3:
+		_level = LEVEL4_SCENE.instantiate()
 	else:
 		_level = PROC_LEVEL_SCENE.instantiate()
 
@@ -418,21 +424,25 @@ const _ELECTRIC_ZONE_SCENE    = preload("res://scenes/ElectricZone.tscn")
 
 @rpc("any_peer", "call_local", "reliable")
 func net_spawn_explosion(pos: Vector2) -> void:
+	# Deferred add_child because callers can fire this from inside a physics
+	# flush (e.g. HomingMissile._on_body_entered → _explode), and the spawned
+	# ExplosiveEffect's _ready() toggles Area2D monitoring, which the physics
+	# server rejects mid-flush.
 	var fx := _EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
+	fx.position = pos
+	call_deferred("add_child", fx)
 
 @rpc("any_peer", "call_local", "reliable")
 func net_spawn_fire_zone(pos: Vector2) -> void:
 	var fx := _FIRE_ZONE_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
+	fx.position = pos
+	call_deferred("add_child", fx)
 
 @rpc("any_peer", "call_local", "reliable")
 func net_spawn_electric_zone(pos: Vector2) -> void:
 	var fx := _ELECTRIC_ZONE_SCENE.instantiate() as Node2D
-	add_child(fx)
-	fx.global_position = pos
+	fx.position = pos
+	call_deferred("add_child", fx)
 
 func _on_health_changed(new_health: int, max_health: int) -> void:
 	var pct: float = 0.0 if max_health <= 0 else clampf(float(new_health) / float(max_health), 0.0, 1.0)

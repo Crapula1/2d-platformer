@@ -22,12 +22,12 @@ func _ready() -> void:
 	MenuBackground.show()
 	for r in Settings.RESOLUTIONS:
 		res_option.add_item("%d x %d" % [r.x, r.y])
-	for name in Settings.WINDOW_MODE_NAMES:
-		mode_option.add_item(name)
-	for name in Settings.FPS_NAMES:
-		fps_option.add_item(name)
-	for name in Settings.MSAA_NAMES:
-		msaa_option.add_item(name)
+	for mode_name in Settings.WINDOW_MODE_NAMES:
+		mode_option.add_item(mode_name)
+	for fps_name in Settings.FPS_NAMES:
+		fps_option.add_item(fps_name)
+	for msaa_name in Settings.MSAA_NAMES:
+		msaa_option.add_item(msaa_name)
 
 	var idx := Settings.RESOLUTIONS.find(Settings.resolution)
 	res_option.selected = max(idx, 0)

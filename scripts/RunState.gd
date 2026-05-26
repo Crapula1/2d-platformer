@@ -13,11 +13,15 @@ const DIFFICULTY_NAMES: Array[String] = ["Easy", "Medium", "Hard", "Nightmare"]
 # the depth Main.gd uses to choose a level scene:
 #   0 → Level.tscn (jungle)
 #   1 → Level2.tscn (industrial)
-#   2 → ProceduralLevel.tscn (procedural loop starts here)
-const LEVEL_NAMES: Array[String] = ["Jungle", "Industrial", "Procedural"]
+#   2 → Level3.tscn (castle)
+#   3 → Level4.tscn (catacombs — metroidvania map)
+#   4 → ProceduralLevel.tscn (procedural loop starts here)
+const LEVEL_NAMES: Array[String] = ["Jungle", "Industrial", "Castle", "Catacombs", "Procedural"]
 const LEVEL_DESCS: Array[String] = [
 	"Hand-built jungle ruins. The intro level.",
 	"Hand-built industrial complex. Tougher patrols.",
+	"Hand-built medieval castle. Moats, braziers, banners.",
+	"Catacombs metroidvania — locked rooms, save crystals, warps, relic abilities, mini-map.",
 	"Endless procedural runs. Scaling difficulty.",
 ]
 

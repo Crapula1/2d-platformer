@@ -24,6 +24,7 @@ const ELEC_ZONE_SCENE        := preload("res://scenes/ElectricZone.tscn")
 const GRENADE_PICKUP_SCENE   := preload("res://scenes/GrenadePickup.tscn")
 const LEVER_SCENE            := preload("res://scenes/Lever.tscn")
 const DOOR_SCENE             := preload("res://scenes/Door.tscn")
+const KAIJU_BOSS_SCRIPT      := preload("res://scripts/KaijuBoss.gd")
 
 const SKY_SCENE              := preload("res://scenes/props/Sky.tscn")
 const CLOUD_SCENE            := preload("res://scenes/props/Cloud.tscn")
@@ -31,7 +32,13 @@ const ROCK_SCENE             := preload("res://scenes/props/Rock.tscn")
 const CLIFF_SCENE            := preload("res://scenes/props/Cliff.tscn")
 
 const LEVEL_LEFT:    float =    -20.0
-const LEVEL_RIGHT:   float =  7520.0
+const LEVEL_RIGHT:   float =  9300.0
+# Castle boss arena (Section I) lives at the right edge — interior bounded by
+# stone walls so the kaiju is physically trapped in the chamber.
+const ARENA_LEFT:    float =  7520.0
+const ARENA_RIGHT:   float =  9220.0
+const ARENA_FLOOR:   float =   400.0
+const ARENA_CEIL:    float =   120.0
 const LEVEL_TOP:     float =   -60.0
 const LEVEL_BOTTOM:  float =   820.0
 const GROUND_TOP:    float =   400.0
@@ -104,6 +111,8 @@ func _ready() -> void:
 	_build_upper_route()
 	_build_gated_exit()
 	_build_hidden_vault()
+	_build_castle_keep()
+	_build_section_i_castle_arena()
 	_spawn_air_demons()
 	_setup_player_camera()
 
@@ -409,6 +418,7 @@ const GROUND_SPANS := [
 	Vector2(2680.0, 3500.0),
 	Vector2(4500.0, 6000.0),
 	Vector2(7000.0, 7500.0),
+	Vector2(7520.0, 9220.0),
 ]
 
 func _is_on_ground(x: float, margin: float = 24.0) -> bool:
@@ -450,6 +460,18 @@ func _add_solid(x: float, y: float, w: float, h: float, body: Color, top_band: f
 		top.offset_bottom = y + top_band
 		top.color = top_color
 		_world.add_child(top)
+
+	# Castle re-skin: overlay matching stone/crenel textures on walkable
+	# surfaces (ground top + every static platform). The underlying ColorRect
+	# stays as a colored fallback in case a texture fails to load.
+	if body == COL_GROUND:
+		# Crenellated wall-top strip caps the ground; stone body fills below.
+		_castle_tile(_world, x, y, w, 28.0, CASTLE_TEX_TOP_LONG)
+		_castle_tile(_world, x, y + 28.0, w, h - 28.0, CASTLE_TEX_STONE,
+			Color(0.85, 0.82, 0.78))
+	elif body == COL_PLAT:
+		# Catwalk → narrow crenel parapet (h is typically 14).
+		_castle_tile(_world, x, y, w, h, CASTLE_TEX_TOP_LONG)
 
 func _add_platform(x: float, y: float, w: float) -> void:
 	# Static catwalk — 14 tall with a cyan warning stripe on top.
@@ -560,12 +582,22 @@ func _add_moving_platform(x: float, y: float, w: float) -> void:
 	mp.set_script(MOVING_PLATFORM_SCRIPT)
 	mp.setup(x, y, w, COL_MOVE)
 	add_child(mp)
+	# MovingPlatform centers its origin at (x+w/2, y+7) and draws its ColorRect
+	# from (-w/2..w/2, -7..7). Overlay a crenel-top tile in the same rect,
+	# tinted warm so the moving variant still reads as distinct from static.
+	_castle_tile(mp, -w * 0.5, -7.0, w, 14.0, CASTLE_TEX_TOP_SHORT,
+		Color(1.20, 0.95, 0.75))
 
 func _add_break_platform(x: float, y: float, w: float) -> void:
 	var bp := StaticBody2D.new()
 	bp.set_script(BREAK_PLATFORM_SCRIPT)
 	bp.setup(x, y, w, COL_BREAK)
 	add_child(bp)
+	# BreakPlatform draws its rect from (-w/2..w/2, 0..14). Rubble texture
+	# reads as crumbling masonry and lines up with the existing "this will
+	# fall" cracks the underlying ColorRect crack marks still hint at.
+	_castle_tile(bp, -w * 0.5, 0.0, w, 14.0, CASTLE_TEX_RUBBLE,
+		Color(0.95, 0.80, 0.65))
 
 func _add_soldier(x: float, y: float, patrol: float = 320.0, speed: float = -1.0) -> void:
 	var s := RANGE_SOLDIER_SCENE.instantiate() as RangeSoldier
@@ -1357,8 +1389,8 @@ func _build_gated_exit() -> void:
 	door.position = Vector2(7340.0, 350.0)
 	add_child(door)
 
-	# Place the exit just past the gate.
-	_add_exit(7400.0, 370.0)
+	# The gate now opens into the castle boss arena (Section I). The actual
+	# level exit lives at the far end of that arena, past the kaiju.
 
 	# Warning stripe + sign so players read the gate as the final lock.
 	var stripe := ColorRect.new()
@@ -1411,6 +1443,105 @@ func _build_hidden_vault() -> void:
 	_add_sign(7220.0, 332.0, Color(0.95, 0.74, 0.16))
 
 # -----------------------------------------------------------------------------
+# Castle backdrop — assembled from castle_pack pieces and placed as decor
+# behind the final exit corridor (section H). Pure visual; no collision.
+# -----------------------------------------------------------------------------
+const CASTLE_DIR := "res://assets/sprites/castle_pack/"
+
+# Castle textures used to re-skin walkable surfaces so the level reads as
+# castle/keep grounds instead of an industrial facility. Collision shapes are
+# unchanged — these are decorative overlays sitting on top of the underlying
+# ColorRect fills built by `_add_solid` / MovingPlatform / BreakPlatform.
+const CASTLE_TEX_TOP_LONG  := preload("res://assets/sprites/castle_pack/sprite_036_133x34.png")  # wall_top_long_b (crenellated top)
+const CASTLE_TEX_TOP_SHORT := preload("res://assets/sprites/castle_pack/sprite_011_64x44.png")   # wall_top_short
+const CASTLE_TEX_STONE     := preload("res://assets/sprites/castle_pack/sprite_019_102x69.png")  # wall_section_b (stone body)
+const CASTLE_TEX_RUBBLE    := preload("res://assets/sprites/castle_pack/sprite_134_78x68.png")   # wall_rubble_a
+
+# Add a tiled TextureRect as a child of `host` covering the given local rect.
+# Tints via modulate so a single stone texture can serve multiple platform
+# kinds (neutral for static, warm/orange for moving, dusty for break).
+func _castle_tile(host: Node, x: float, y: float, w: float, h: float, tex: Texture2D, mod: Color = Color.WHITE, z: int = 0) -> TextureRect:
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.stretch_mode = TextureRect.STRETCH_TILE
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	tr.position = Vector2(x, y)
+	tr.size = Vector2(w, h)
+	tr.modulate = mod
+	tr.z_index = z
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	host.add_child(tr)
+	return tr
+
+# Bottom-center anchored sprite. `by` is the y of the sprite's base; the
+# sprite is placed so its bottom edge sits at `by`.
+func _castle_piece(file: String, cx: float, by: float, z: int = -1, flip: bool = false) -> Sprite2D:
+	var spr := Sprite2D.new()
+	spr.texture = load(CASTLE_DIR + file)
+	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	spr.centered = true
+	spr.flip_h = flip
+	var sz: Vector2 = (spr.texture as Texture2D).get_size()
+	spr.position = Vector2(cx, by - sz.y * 0.5)
+	spr.z_index = z
+	add_child(spr)
+	return spr
+
+func _build_castle_keep() -> void:
+	# Anchor: ground top in section H is y=400; centerpiece at x=7220, set
+	# slightly back from the exit (which sits at x=7400) so the player
+	# approaches the castle silhouette before reaching the gate.
+	const G: float = 400.0
+	const CX: float = 7220.0
+
+	# --- Foliage at the base (drawn first → behind walls) ---------------
+	_castle_piece("sprite_159_75x99.png",  CX - 220.0, G, -2)         # tree
+	_castle_piece("sprite_175_61x55.png",  CX - 170.0, G, -2)         # bush_large
+	_castle_piece("sprite_165_54x84.png",  CX + 215.0, G, -2)         # tree_medium
+	_castle_piece("sprite_157_37x50.png",  CX + 175.0, G, -2)         # bush_medium
+
+	# --- Foundation row: wall section + door + wall section -------------
+	_castle_piece("sprite_005_63x114.png", CX - 95.0,  G)             # wall_section_a (L)
+	_castle_piece("sprite_048_64x85.png",  CX,         G)             # wall_with_door
+	_castle_piece("sprite_005_63x114.png", CX + 95.0,  G, -1, true)   # wall_section_a (R, mirrored)
+
+	# Hanging banner above the gate
+	_castle_piece("sprite_054_78x84.png",  CX,         G - 78.0)      # banner_lion_blue
+
+	# --- Flanking towers (sit on ground, taller than foundation walls) --
+	_castle_piece("sprite_009_62x143.png", CX - 165.0, G)              # tower_tall_a (L)
+	_castle_piece("sprite_010_48x143.png", CX + 165.0, G, -1, true)    # tower_tall_b (R)
+
+	# --- Central keep rising above the gate -----------------------------
+	# wall_with_door is 85 tall, so its top sits at G-85=315. Stack the
+	# medium tower on top so it appears to rise from the keep.
+	_castle_piece("sprite_012_63x98.png",  CX,         G - 85.0)       # tower_medium_a
+
+	# --- Crenellated spire tops on flanking towers ----------------------
+	# tower_tall_*.png is 143 tall → top edge at G-143=257. Place spires
+	# on that baseline so they cap the towers.
+	_castle_piece("sprite_002_112x128.png", CX - 165.0, G - 143.0, 0)  # tower_spire_a (L)
+	_castle_piece("sprite_003_108x129.png", CX + 165.0, G - 143.0, 0)  # tower_spire_b (R)
+
+	# Small spire on top of central keep (tower_medium top at G-85-98=217)
+	_castle_piece("sprite_030_65x82.png",  CX,         G - 183.0, 0)   # tower_short_a
+
+	# --- Torches flanking the gate --------------------------------------
+	_castle_piece("sprite_084_15x30.png",  CX - 40.0,  G - 50.0, 0)    # torch_lit_a
+	_castle_piece("sprite_085_16x31.png",  CX + 40.0,  G - 50.0, 0)    # torch_lit_b
+
+	# --- Shield banners on the flanking towers --------------------------
+	_castle_piece("sprite_082_28x34.png",  CX - 165.0, G - 90.0, 0)    # banner_shield_a (L)
+	_castle_piece("sprite_083_32x36.png",  CX + 165.0, G - 90.0, 0)    # banner_shield_b (R)
+
+	# --- Ground cover in front (bushes + grass) -------------------------
+	_castle_piece("sprite_155_26x27.png",  CX - 75.0,  G, 0)           # bush_small_b
+	_castle_piece("sprite_156_25x24.png",  CX + 75.0,  G, 0, true)     # bush_small_c
+	_castle_piece("sprite_162_26x10.png",  CX - 130.0, G, 0)           # grass_strand
+	_castle_piece("sprite_162_26x10.png",  CX + 130.0, G, 0, true)
+
+# -----------------------------------------------------------------------------
 # Camera limits — match the sealed world bounds so the camera can pan the
 # whole level. Called by Main.gd after spawning the chosen character.
 # -----------------------------------------------------------------------------
@@ -1431,3 +1562,139 @@ func apply_player_camera(player_node: Node2D) -> void:
 
 func _setup_player_camera() -> void:
 	apply_player_camera(get_node_or_null("Player") as Node2D)
+
+# -----------------------------------------------------------------------------
+# Section I — Castle boss arena (7520..9220)
+# A sealed castle-interior chamber: stone floor, twin flanking towers as inner
+# walls, crenellated battlement as the ceiling, and a procedurally-generated
+# kaiju boss locked inside. The level exit sits at the far end so the boss
+# must be cleared to finish the floor.
+# -----------------------------------------------------------------------------
+func _build_section_i_castle_arena() -> void:
+	# --- Floor: continues the castle-skinned ground from section H ---------
+	_add_ground(7500.0, ARENA_RIGHT)
+
+	# --- Inner arena walls (flanking towers, collidable) ------------------
+	# Right tower face — solid (outer level seal at LEVEL_RIGHT already
+	# provides the actual rightmost wall; this is the visible inner face).
+	_add_solid(ARENA_RIGHT - 24.0, ARENA_CEIL - 20.0, 24.0, ARENA_FLOOR - ARENA_CEIL + 20.0, COL_WALL)
+
+	# Left tower wall — lintel above a 64px doorway opening at floor level.
+	# The doorway itself is plugged by a movable Door (see below) that the
+	# player raises by flipping a lever on the outside.
+	const DOORWAY_H: float = 64.0
+	var lintel_top: float = ARENA_CEIL - 20.0
+	var lintel_h: float = (ARENA_FLOOR - DOORWAY_H) - lintel_top
+	_add_solid(7500.0, lintel_top, 24.0, lintel_h, COL_WALL)
+
+	# Movable Door plugging the doorway. Door scene is 16×64 centered on its
+	# position; place its center at (7512, ARENA_FLOOR - 32) so it occupies
+	# y ∈ [ARENA_FLOOR-64, ARENA_FLOOR] inside the doorway opening.
+	var arena_door := DOOR_SCENE.instantiate() as Door
+	arena_door.name = "ArenaDoor"
+	arena_door.position = Vector2(7512.0, ARENA_FLOOR - 32.0)
+	add_child(arena_door)
+
+	# Lever on the section H floor just outside the door. Wired to ArenaDoor.
+	var arena_lever := LEVER_SCENE.instantiate() as Lever
+	arena_lever.name = "ArenaLever"
+	arena_lever.position = Vector2(7460.0, ARENA_FLOOR - 28.0)
+	arena_lever.connected_doors = [NodePath("../ArenaDoor")]
+	add_child(arena_lever)
+
+	# Sign + warning stripe so the player reads this as the boss gate.
+	_add_sign(7440.0, ARENA_FLOOR - 24.0, Color(0.90, 0.20, 0.10))
+	var gate_stripe := ColorRect.new()
+	gate_stripe.z_index = -1
+	gate_stripe.offset_left = 7502.0
+	gate_stripe.offset_top = ARENA_FLOOR - DOORWAY_H
+	gate_stripe.offset_right = 7522.0
+	gate_stripe.offset_bottom = ARENA_FLOOR
+	gate_stripe.color = Color(1.0, 0.55, 0.18, 0.18)
+	add_child(gate_stripe)
+
+	# --- Ceiling: solid stone battlement across the arena -----------------
+	# Sits at ARENA_CEIL=120, 28 tall, fully blocking. Keeps flames + player
+	# inside the chamber.
+	_add_solid(7500.0, ARENA_CEIL - 28.0, ARENA_RIGHT - 7500.0, 28.0, COL_WALL)
+
+	# Castle-stone skin overlay on the inner walls + ceiling so the arena
+	# reads as castle masonry instead of raw industrial concrete.
+	_castle_tile(self, 7500.0, ARENA_CEIL - 28.0, ARENA_RIGHT - 7500.0, 28.0,
+		CASTLE_TEX_TOP_LONG, Color(0.95, 0.92, 0.88))
+	_castle_tile(self, 7500.0, ARENA_CEIL, 24.0, ARENA_FLOOR - ARENA_CEIL,
+		CASTLE_TEX_STONE, Color(0.88, 0.85, 0.80))
+	_castle_tile(self, ARENA_RIGHT - 24.0, ARENA_CEIL, 24.0, ARENA_FLOOR - ARENA_CEIL,
+		CASTLE_TEX_STONE, Color(0.88, 0.85, 0.80))
+	# Dim back-wall tint behind the arena (purely decorative).
+	var back := ColorRect.new()
+	back.z_index = -3
+	back.offset_left = 7524.0
+	back.offset_top = ARENA_CEIL
+	back.offset_right = ARENA_RIGHT - 24.0
+	back.offset_bottom = ARENA_FLOOR
+	back.color = Color(0.10, 0.08, 0.06)
+	add_child(back)
+
+	# --- Decorative castle pieces ----------------------------------------
+	const G: float = ARENA_FLOOR
+	# Twin spires above the flanking towers (visible above the battlement).
+	_castle_piece("sprite_002_112x128.png", 7560.0, ARENA_CEIL - 28.0, 0)        # tower_spire_a (L)
+	_castle_piece("sprite_003_108x129.png", ARENA_RIGHT - 60.0, ARENA_CEIL - 28.0, 0)  # tower_spire_b (R)
+	# Banners along the back wall, evenly spaced.
+	var banner_x: float = 7700.0
+	var banner_i: int = 0
+	while banner_x < ARENA_RIGHT - 120.0:
+		var which: String = "sprite_073_41x68.png" if banner_i % 2 == 0 else "sprite_074_33x62.png"
+		_castle_piece(which, banner_x, ARENA_CEIL + 80.0, -2)
+		banner_x += 220.0
+		banner_i += 1
+	# Torch pairs along the floor
+	var torch_x: float = 7660.0
+	var torch_i: int = 0
+	while torch_x < ARENA_RIGHT - 60.0:
+		var which := "sprite_084_15x30.png" if torch_i % 2 == 0 else "sprite_085_16x31.png"
+		_castle_piece(which, torch_x, G - 90.0, 0)
+		torch_x += 320.0
+		torch_i += 1
+	# Foliage tufts at the floor edges
+	_castle_piece("sprite_155_26x27.png", 7600.0, G, 0)
+	_castle_piece("sprite_156_25x24.png", ARENA_RIGHT - 80.0, G, 0, true)
+	_castle_piece("sprite_175_61x55.png", 7720.0, G, 0)
+	_castle_piece("sprite_175_61x55.png", ARENA_RIGHT - 160.0, G, 0, true)
+	# Rubble flanking the gate so the entry reads as a breached castle.
+	_castle_piece("sprite_134_78x68.png", 7560.0, G, 0)
+	_castle_piece("sprite_135_122x75.png", ARENA_RIGHT - 130.0, G, 0, true)
+
+	# Wide warning glow at the arena entrance.
+	var entry_glow := ColorRect.new()
+	entry_glow.z_index = -1
+	entry_glow.offset_left = 7500.0
+	entry_glow.offset_top = G - 90.0
+	entry_glow.offset_right = 7600.0
+	entry_glow.offset_bottom = G - 2.0
+	entry_glow.color = Color(1.0, 0.30, 0.10, 0.18)
+	add_child(entry_glow)
+
+	# --- Boss spawn ------------------------------------------------------
+	# Spawn in the back half of the arena so the player has room to react.
+	var boss := CharacterBody2D.new()
+	boss.set_script(KAIJU_BOSS_SCRIPT)
+	boss.name = "KaijuBoss"
+	# Boss feet on floor: its collision rect is centered on its origin offset
+	# upward by h*0.5 (see KaijuBoss._build_collision), so place the origin at
+	# the floor line.
+	boss.position = Vector2(8500.0, ARENA_FLOOR)
+	boss.set("arena_left",  ARENA_LEFT + 40.0)
+	boss.set("arena_right", ARENA_RIGHT - 40.0)
+	boss.set("arena_floor", ARENA_FLOOR)
+	# Keep the boss at least 220px from the doorway so it can't camp the
+	# entrance the player uses to come in. Flame projectiles still travel the
+	# full arena width — only the boss's own movement is restricted.
+	boss.set("entrance_buffer", 220.0)
+	$Enemies.add_child(boss)
+
+	# --- Exit at the far end of the arena -------------------------------
+	# Sits just inside the right tower so the player has to clear the kaiju
+	# before reaching it.
+	_add_exit(ARENA_RIGHT - 80.0, ARENA_FLOOR - 30.0)
