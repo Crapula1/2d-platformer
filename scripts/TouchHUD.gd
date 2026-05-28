@@ -27,7 +27,7 @@ const LAYOUT := [
 	["shoot",         "FIRE", BTN_SIZE,        1, Vector2(-PAD - 108.0,                 -PAD - 108.0 * 2 - 14.0),             C_SHOOT],
 	["dash",          "DASH", SMALL_BTN_SIZE,  1, Vector2(-PAD - 84.0 - 108.0 - 14.0,   -PAD - 108.0 - 84.0 - 10.0),          C_DASH],
 	["throw_grenade", "NADE", SMALL_BTN_SIZE,  1, Vector2(-PAD - 84.0,                  -PAD - 108.0 * 2 - 14.0 - 84.0 - 10.0), C_NADE],
-	["interact",      "USE",  SMALL_BTN_SIZE,  1, Vector2(-PAD - 84.0 - 108.0 - 14.0,   -PAD - 108.0 * 2 - 14.0),             C_USE],
+	["interact",      "USE",  SMALL_BTN_SIZE,  1, Vector2(-PAD - 84.0 - 108.0 - 14.0,   -PAD - 108.0 * 2 - 14.0 - 84.0 - 10.0), C_USE],
 	["pause",         "II",   Vector2(64, 64), 2, Vector2(-PAD - 64.0,                   PAD),                                 C_PAUSE],
 ]
 
