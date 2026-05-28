@@ -9,7 +9,12 @@ class_name KaijuBoss
 # count, volley size, aggressiveness, height jitter, pace distance) so two
 # bosses placed in the same level read as different individuals.
 
-enum State { IDLE, PACE, ROAR, FIRE, BURST, LEAP, SLAM_WINDUP, SLAM_CHARGE, STAGGER, DEAD }
+# Locomotion + decision states. All offensive moves now run through the single
+# ATTACK state, which steps the current attack def through WINDUP → ACTIVE →
+# RECOVERY (see ATTACKS table + _run_attack). STAGGER is the posture-break
+# punish window; PHASE_TRANSITION is the brief invulnerable phase-change beat.
+enum State { IDLE, PACE, ATTACK, STAGGER, PHASE_TRANSITION, DEAD }
+enum AtkPhase { WINDUP, ACTIVE, RECOVERY }
 
 @export var max_health: int = 400
 @export var contact_damage: int = 3
@@ -24,10 +29,19 @@ enum State { IDLE, PACE, ROAR, FIRE, BURST, LEAP, SLAM_WINDUP, SLAM_CHARGE, STAG
 @export var slam_windup_time: float = 0.45
 @export var slam_max_time: float = 0.70
 @export var proc_seed: int = 0     # 0 = randomize at _ready
-# Health fraction at which the boss permanently enrages. Enrage compresses
-# cooldowns, raises pace + slam speed, and ups volley counts so the back
-# half of the fight escalates pressure instead of plateauing.
-@export var enrage_threshold: float = 0.5
+# HP fractions at which the boss advances to the next phase. Crossing a
+# threshold triggers a brief invulnerable PHASE_TRANSITION that bumps stats,
+# shifts the palette hotter, and unlocks attacks gated behind that phase
+# (see ATTACKS[*].phase_min). phase runs 1 → 3.
+const PHASE_THRESHOLDS: Array[float] = [0.66, 0.33]
+# Posture (Souls/Sekiro-style). Hits build posture; a full bar breaks the boss
+# into a long, highly-vulnerable STAGGER. Posture decays after a no-hit beat so
+# the player has to keep pressure on to force a break.
+@export var posture_max: float = 100.0
+@export var posture_regen: float = 22.0       # per second, after the decay delay
+@export var posture_decay_delay: float = 1.1  # seconds of no hits before regen starts
+@export var stagger_time: float = 1.7         # length of the posture-break window
+@export var stagger_vuln: float = 3.0         # damage multiplier while staggered
 # Minimum distance the boss will keep from `arena_left` — protects the doorway
 # the player uses to enter the arena. Pacing, position clamp, and target
 # selection all respect this so the boss can't sit on the entrance.
@@ -35,6 +49,93 @@ enum State { IDLE, PACE, ROAR, FIRE, BURST, LEAP, SLAM_WINDUP, SLAM_CHARGE, STAG
 
 const FLAME_SCRIPT := preload("res://scripts/KaijuFlame.gd")
 const EXPLOSIVE_EFFECT_SCENE := preload("res://scenes/ExplosiveEffect.tscn")
+
+# -----------------------------------------------------------------------------
+# Data-driven attack table. Each move is fully described here so the state
+# machine stays generic — adding or tuning an attack means editing this dict,
+# not the executor. The executor (_run_attack) steps every move through
+# WINDUP → ACTIVE → RECOVERY and dispatches on `kind`.
+#
+# Common fields:
+#   kind          projectile | melee | slam | leap | leap_slam
+#   windup        telegraph length (s) — boss is rooted-ish and readable
+#   active        dangerous window (s) — hitbox live / projectiles fire
+#   recovery      punish window (s) — boss rooted, takes `recovery_vuln`× damage
+#   telegraph     pose cue name consumed by _apply_telegraph
+#   min_range/max_range   horizontal |dx| band where the move is a valid pick
+#   phase_min     earliest phase this unlocks (1..3)
+#   weight        base selection weight before brain biasing
+#   recovery_vuln damage-taken multiplier during RECOVERY (the punish)
+#   combo_next    optional Array[String] of follow-up attack names
+#   combo_chance  probability of chaining a follow-up (0..1)
+#   combo_delay   pause before the follow-up starts (long = dodge-bait)
+# Kind-specific:
+#   projectile    volley_min/volley_max, spread ("line"|"fan"|"nova"), spread_amp
+#   melee         hit_w, hit_h, hit_off (forward px), damage, knockback
+#   slam          damage (defaults to slam_damage), speed_mult
+#   leap_slam     shock_damage, shock_count
+const ATTACKS: Dictionary = {
+	"flame_spit": {
+		"kind": "projectile", "windup": 0.42, "active": 0.14, "recovery": 0.46,
+		"telegraph": "head_rear", "min_range": 140.0, "max_range": INF,
+		"phase_min": 1, "weight": 1.0, "recovery_vuln": 1.5,
+		"volley_min": 1, "volley_max": 1, "spread": "line", "spread_amp": 0.0,
+	},
+	"flame_volley": {
+		"kind": "projectile", "windup": 0.52, "active": 0.55, "recovery": 0.55,
+		"telegraph": "head_rear", "min_range": 200.0, "max_range": INF,
+		"phase_min": 1, "weight": 1.0, "recovery_vuln": 1.5,
+		"volley_min": 3, "volley_max": 5, "spread": "line", "spread_amp": 12.0,
+		"combo_next": ["body_slam"], "combo_chance": 0.25, "combo_delay": 0.45,
+	},
+	"claw_swipe": {
+		"kind": "melee", "windup": 0.34, "active": 0.12, "recovery": 0.40,
+		"telegraph": "claw_raise", "min_range": 0.0, "max_range": 150.0,
+		"phase_min": 1, "weight": 1.1, "recovery_vuln": 1.7,
+		"hit_w": 74.0, "hit_h": 70.0, "hit_off": 46.0, "damage": 3, "knockback": 260.0,
+		"combo_next": ["claw_swipe", "tail_sweep"], "combo_chance": 0.55, "combo_delay": 0.14,
+	},
+	"tail_sweep": {
+		"kind": "melee", "windup": 0.46, "active": 0.18, "recovery": 0.58,
+		"telegraph": "tail_coil", "min_range": 0.0, "max_range": 200.0,
+		"phase_min": 1, "weight": 0.9, "recovery_vuln": 1.8,
+		"hit_w": 150.0, "hit_h": 44.0, "hit_off": 30.0, "damage": 4, "knockback": 360.0,
+	},
+	"body_slam": {
+		"kind": "slam", "windup": 0.45, "active": 0.70, "recovery": 0.34,
+		"telegraph": "rear_back", "min_range": 90.0, "max_range": 560.0,
+		"phase_min": 1, "weight": 1.0, "recovery_vuln": 1.6, "speed_mult": 1.0,
+	},
+	"leap_reposition": {
+		"kind": "leap", "windup": 0.18, "active": 1.20, "recovery": 0.16,
+		"telegraph": "crouch_load", "min_range": 0.0, "max_range": INF,
+		"phase_min": 1, "weight": 0.5, "recovery_vuln": 1.2,
+	},
+	"flame_fan": {
+		"kind": "projectile", "windup": 0.55, "active": 0.10, "recovery": 0.6,
+		"telegraph": "head_rear", "min_range": 160.0, "max_range": INF,
+		"phase_min": 2, "weight": 1.2, "recovery_vuln": 1.5,
+		"volley_min": 3, "volley_max": 3, "spread": "fan", "spread_amp": 26.0,
+	},
+	"leap_slam": {
+		"kind": "leap_slam", "windup": 0.38, "active": 1.10, "recovery": 0.62,
+		"telegraph": "crouch_load", "min_range": 120.0, "max_range": 600.0,
+		"phase_min": 2, "weight": 1.1, "recovery_vuln": 1.9,
+		"shock_damage": 4, "shock_count": 3,
+	},
+	"double_slam": {
+		"kind": "slam", "windup": 0.40, "active": 0.62, "recovery": 0.26,
+		"telegraph": "rear_back", "min_range": 90.0, "max_range": 560.0,
+		"phase_min": 3, "weight": 1.3, "recovery_vuln": 1.4, "speed_mult": 1.1,
+		"combo_next": ["body_slam"], "combo_chance": 0.8, "combo_delay": 0.18,
+	},
+	"flame_nova": {
+		"kind": "projectile", "windup": 0.6, "active": 0.10, "recovery": 0.7,
+		"telegraph": "head_rear", "min_range": 0.0, "max_range": INF,
+		"phase_min": 3, "weight": 1.0, "recovery_vuln": 1.6,
+		"volley_min": 6, "volley_max": 6, "spread": "nova", "spread_amp": 60.0,
+	},
+}
 
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 var rng := RandomNumberGenerator.new()
@@ -66,27 +167,64 @@ var is_dead: bool = false
 var direction: int = -1
 var pace_target_x: float = 0.0
 var player: Node = null
-var volley_remaining: int = 0
-var volley_delay: float = 0.0
-var pending_fire_delay: float = 0.0
-# Counts down while pacing; when it hits zero the boss commits to an attack
-# (or occasionally a leap). Drives the "always moving, attacks on a beat"
-# Mega Man cadence.
+# Counts down while pacing; when it hits zero the boss commits to an attack.
+# Brain nudges pull this in to start attacks sooner.
 var attack_cd: float = 0.0
-# Counts down while pacing too; when it hits zero the boss may leap to break
-# up its horizontal pattern. Independent from attack_cd so leaps and attacks
-# can interleave instead of competing for the same beat.
+# Extra gates so slams/leaps don't fire every beat — the selector skips those
+# kinds while their gate is up. Brain heal-punish yanks slam_cd low.
 var leap_cd: float = 0.0
-# Body slam cooldown — long enough that slams feel like committed reads, not
-# a constant threat. Enrage compresses it.
 var slam_cd: float = 0.0
 var slam_dir: int = -1
 var _slam_hit_this_charge: bool = false
-# Enrage state — flips once when HP crosses the threshold and never resets.
+
+# --- Attack executor ---------------------------------------------------------
+var current_attack: Dictionary = {}
+var current_attack_name: String = ""
+var atk_phase: AtkPhase = AtkPhase.WINDUP
+var atk_phase_t: float = 0.0
+var _atk_active_inited: bool = false   # one-shot setup latch for the ACTIVE phase
+var _volley_remaining: int = 0
+var _volley_period: float = 0.0
+var _volley_delay: float = 0.0
+var _volley_total: int = 0
+var _melee_hit_this_swing: bool = false
+var _did_leap_launch: bool = false
+var _did_shockwave: bool = false
+# Combo chaining — set when an attack's recovery ends and a follow-up rolls in.
+var combo_depth: int = 0
+const COMBO_DEPTH_MAX: int = 3
+var _combo_next_name: String = ""
+var _gap_time: float = 0.0
+
+# --- Posture / phase ---------------------------------------------------------
+var posture: float = 0.0
+var _posture_decay_t: float = 0.0
+var damage_taken_mult: float = 1.0   # >1 during recovery/stagger = punish window
+var phase: int = 1
+var _phase_invuln: bool = false      # true during PHASE_TRANSITION
+# Enrage flag kept for the aura — now driven by phase (>=2) rather than a
+# one-shot HP threshold.
 var is_enraged: bool = false
+
+# --- Telegraph pose targets (blended in _update_visuals) ---------------------
+# When _pose_weight > 0 these override the idle breathing so windup/recovery
+# poses read clearly; weight lerps back to 0 to settle the rig to neutral.
+var _pose_weight: float = 0.0
+var _pose_body_rot: float = 0.0
+var _pose_body_y: float = 0.0
+var _pose_scale_y: float = 1.0
+var _pose_head_rot: float = 0.0
+var _pose_arm_fore_rot: float = 0.0
+var _pose_arm_back_rot: float = 0.0
+var _pose_tail_rot: float = 0.0
+
 var _slam_hitbox: Area2D
 var _slam_hitbox_shape: CollisionShape2D
+var _melee_hitbox: Area2D
+var _melee_hitbox_shape: CollisionShape2D
 var _enrage_aura: ColorRect
+var _posture_bar_bg: ColorRect
+var _posture_bar_fill: ColorRect
 
 # --- Adaptive brain ---------------------------------------------------------
 # The boss samples the fight every brain_period seconds and asks five
@@ -113,7 +251,7 @@ var _player_tactic_log: Array[String] = []
 # repeating-tactic signal also says we should switch it up.
 var _last_attack_kind: String = ""
 # Final read-out signals — recomputed each brain tick and consumed by
-# _begin_attack / _pick_pace_target / _run_state.
+# _bias_weight (attack selection) / _pick_pace_target / _brain_tick nudges.
 var sig_aggressive: bool = false
 var sig_healing: bool = false
 var sig_at_range: bool = false
@@ -163,6 +301,7 @@ func _ready() -> void:
 	current_health = max_health
 	_build_collision()
 	_build_slam_hitbox()
+	_build_melee_hitbox()
 	_build_visual()
 	_build_enrage_aura()
 	_build_hp_bar()
@@ -271,6 +410,26 @@ func _build_slam_hitbox() -> void:
 	_slam_hitbox_shape.set_deferred("disabled", true)
 
 	_slam_hitbox.body_entered.connect(_on_slam_body_entered)
+
+# Melee hitbox for claw/tail swings. Re-sized + re-positioned per swing from
+# the attack def (hit_w/hit_h/hit_off), mirrored by `direction`. Only live
+# during a melee attack's ACTIVE phase.
+func _build_melee_hitbox() -> void:
+	_melee_hitbox = Area2D.new()
+	_melee_hitbox.name = "MeleeHitbox"
+	_melee_hitbox.collision_layer = 0
+	_melee_hitbox.collision_mask = 2  # player body
+	_melee_hitbox.monitoring = true
+	add_child(_melee_hitbox)
+
+	_melee_hitbox_shape = CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(60.0, 60.0)
+	_melee_hitbox_shape.shape = rect
+	_melee_hitbox.add_child(_melee_hitbox_shape)
+	_melee_hitbox_shape.set_deferred("disabled", true)
+
+	_melee_hitbox.body_entered.connect(_on_melee_body_entered)
 
 # -----------------------------------------------------------------------------
 # Procedural visual assembly — built once at _ready, animated each frame.
@@ -715,6 +874,26 @@ func _build_hp_bar() -> void:
 	_hp_bar_fill.z_index = 11
 	add_child(_hp_bar_fill)
 
+	# Posture bar — thinner, sits just above the HP bar. Fills toward a break;
+	# empties as posture decays. Flashes bright as it nears full.
+	_posture_bar_bg = ColorRect.new()
+	_posture_bar_bg.color = Color(0.05, 0.04, 0.02, 0.85)
+	_posture_bar_bg.offset_left = -w * 0.5 - 2.0
+	_posture_bar_bg.offset_top  = -160.0 * size_mult
+	_posture_bar_bg.offset_right = w * 0.5 + 2.0
+	_posture_bar_bg.offset_bottom = -152.0 * size_mult
+	_posture_bar_bg.z_index = 10
+	add_child(_posture_bar_bg)
+
+	_posture_bar_fill = ColorRect.new()
+	_posture_bar_fill.color = Color(0.95, 0.80, 0.25)
+	_posture_bar_fill.offset_left = -w * 0.5
+	_posture_bar_fill.offset_top  = -159.0 * size_mult
+	_posture_bar_fill.offset_right = -w * 0.5
+	_posture_bar_fill.offset_bottom = -153.0 * size_mult
+	_posture_bar_fill.z_index = 11
+	add_child(_posture_bar_fill)
+
 # -----------------------------------------------------------------------------
 # Physics + AI
 # -----------------------------------------------------------------------------
@@ -737,6 +916,7 @@ func _physics_process(delta: float) -> void:
 	state_timer += delta
 	if _hurt_flash > 0.0:
 		_hurt_flash -= delta
+	_update_posture(delta)
 
 	_brain_t += delta
 	if _brain_t >= brain_period:
@@ -753,8 +933,7 @@ func _physics_process(delta: float) -> void:
 	_update_visuals(delta)
 
 func _run_state(delta: float) -> void:
-	# Global cooldowns tick down whenever the boss is "free" (moving) — they
-	# don't run during a committed attack or stagger.
+	# Cooldown gates tick down only while the boss is free (pacing/idle).
 	if state == State.PACE or state == State.IDLE:
 		attack_cd = maxf(attack_cd - delta, 0.0)
 		leap_cd = maxf(leap_cd - delta, 0.0)
@@ -765,148 +944,386 @@ func _run_state(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
 			_face_player()
 			if state_timer >= rng.randf_range(idle_time_min, idle_time_max):
-				_pick_next_action()
+				_enter_state(State.PACE)
 		State.PACE:
-			var to_target: float = pace_target_x - global_position.x
-			direction = -1 if to_target < 0.0 else 1
-			# Accelerate toward pace speed instead of snapping — feels heavy
-			# but stays mobile.
-			var desired: float = float(direction) * pace_speed
-			velocity.x = move_toward(velocity.x, desired, 900.0 * delta)
-			# Reached target, or paced long enough → pick a new behavior right
-			# away. No detour through IDLE → kaiju is in motion essentially
-			# every frame.
-			if absf(to_target) < 12.0 or state_timer > 1.4:
-				_pick_next_action()
-			# Mid-pace body slam — committed read, only fires when grounded
-			# and the player is roughly in front of the boss so the slam has
-			# a chance to actually connect.
-			elif slam_cd <= 0.0 and is_on_floor() and _slam_makes_sense():
-				_begin_slam()
-			# Mid-pace attack: when the cooldown elapses, commit to the roar
-			# without waiting to finish the pace. Boss attacks on the move.
-			elif attack_cd <= 0.0:
-				_begin_attack()
-			# Mid-pace leap to break up its horizontal silhouette. Repeating-
-			# tactic signal shortens the implicit cooldown by letting any
-			# half-charged leap fire — the boss deliberately changes axis
-			# when the player has locked into one position.
-			elif leap_cd <= 0.0 and is_on_floor():
-				_begin_leap()
-			elif sig_repeating and leap_cd < 0.6 and is_on_floor() \
-					and rng.randf() < 0.04:
-				_begin_leap()
-		State.ROAR:
-			velocity.x = move_toward(velocity.x, 0.0, 1200.0 * delta)
-			_face_player()
-			# Mouth glows brighter as the roar peaks. Shorter telegraph than
-			# before so the high-mobility pattern reads as aggressive.
-			var t: float = clampf(state_timer / 0.40, 0.0, 1.0)
-			_mouth_glow.modulate.a = t
-			if state_timer >= 0.40:
-				if volley_remaining > 1:
-					_enter_state(State.BURST)
-				else:
-					_enter_state(State.FIRE)
-		State.FIRE:
-			velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
-			_spawn_flame(rng.randf_range(-height_jitter, height_jitter))
-			volley_remaining = 0
-			# Straight back to pacing — no idle beat.
-			_post_attack()
-		State.BURST:
-			velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
-			volley_delay -= delta
-			if volley_delay <= 0.0 and volley_remaining > 0:
-				var jitter: float = rng.randf_range(-height_jitter, height_jitter)
-				_spawn_flame(jitter)
-				volley_remaining -= 1
-				volley_delay = burst_period
-			if volley_remaining <= 0:
-				_post_attack()
-		State.LEAP:
-			# In the air: keep horizontal thrust, let gravity work.
-			var leap_dir: float = signf(velocity.x)
-			if leap_dir == 0.0:
-				leap_dir = float(direction)
-			velocity.x = leap_dir * leap_vx
-			# Resolve when we land OR if we're hung against a wall.
-			if is_on_floor() and state_timer >= 0.15:
-				_post_attack()
-		State.SLAM_WINDUP:
-			# Rear back: brief reverse-creep telegraphs the lunge direction.
-			velocity.x = move_toward(velocity.x, float(-slam_dir) * 60.0, 600.0 * delta)
-			_face_player()
-			# Re-aim direction at the last moment so the slam tracks the
-			# player's current side — but only during the first half of
-			# the windup, so a quick juke past the boss commits it the
-			# wrong way (player skill check).
-			if state_timer < slam_windup_time * 0.5 and player is Node2D:
-				var dx: float = (player as Node2D).global_position.x - global_position.x
-				slam_dir = -1 if dx < 0.0 else 1
-				direction = slam_dir
-			if state_timer >= slam_windup_time:
-				_enter_state(State.SLAM_CHARGE)
-		State.SLAM_CHARGE:
-			velocity.x = float(slam_dir) * slam_speed
-			# Resolve when: max charge time elapsed, ran into a wall, or hit
-			# the entrance buffer / combat wall.
-			var hit_wall: bool = is_on_wall() or absf(velocity.x) < slam_speed * 0.4
-			var at_edge: bool = (slam_dir < 0 and global_position.x <= _combat_min_x() + 8.0) \
-				or (slam_dir > 0 and global_position.x >= arena_right - 44.0)
-			if state_timer >= slam_max_time or hit_wall or at_edge:
-				# Recovery burst — kick a small backward velocity so the
-				# stop reads as a body brake, then exit through STAGGER
-				# for a beat of vulnerability after the commit.
-				velocity.x = float(-slam_dir) * 120.0
-				_end_slam()
+			_run_pace(delta)
+		State.ATTACK:
+			_run_attack(delta)
 		State.STAGGER:
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
-			if state_timer >= 0.20:
+			# Posture-break punish window: rooted, takes stagger_vuln× damage.
+			velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+			damage_taken_mult = stagger_vuln
+			if state_timer >= stagger_time:
+				damage_taken_mult = 1.0
+				_enter_state(State.PACE)
+		State.PHASE_TRANSITION:
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+			_face_player()
+			if state_timer >= 0.85:
+				_phase_invuln = false
+				damage_taken_mult = 1.0
 				_enter_state(State.PACE)
 		_:
 			pass
 
+func _run_pace(delta: float) -> void:
+	var to_target: float = pace_target_x - global_position.x
+	direction = -1 if to_target < 0.0 else 1
+	var desired: float = float(direction) * pace_speed
+	velocity.x = move_toward(velocity.x, desired, 900.0 * delta)
+	# Commit to an attack on the beat, if anything in the kit is in range.
+	if attack_cd <= 0.0 and is_on_floor():
+		var pick: String = _choose_attack()
+		if pick != "":
+			combo_depth = 0
+			_start_attack(pick)
+			return
+	# Reached the lane or paced long enough → pick a fresh target.
+	if absf(to_target) < 12.0 or state_timer > 1.4:
+		_pick_pace_target()
+		state_timer = 0.0
+
+# -----------------------------------------------------------------------------
+# Attack selection — builds a candidate pool from ATTACKS filtered by phase and
+# range, weights each by the brain signals, and weighted-randomly picks one.
+# -----------------------------------------------------------------------------
+func _choose_attack() -> String:
+	if not (player is Node2D):
+		return ""
+	var p := player as Node2D
+	var dx: float = absf(p.global_position.x - global_position.x)
+	var names: Array[String] = []
+	var weights: Array[float] = []
+	for name in ATTACKS:
+		var d: Dictionary = ATTACKS[name]
+		if int(d.get("phase_min", 1)) > phase:
+			continue
+		if dx < float(d.get("min_range", 0.0)) or dx > float(d.get("max_range", INF)):
+			continue
+		var kind: String = String(d.get("kind", "projectile"))
+		# Slam / leap kinds respect their own gates so they read as committed
+		# reads, not constant pressure.
+		if kind == "slam" and slam_cd > 0.0:
+			continue
+		if (kind == "leap" or kind == "leap_slam") and leap_cd > 0.0:
+			continue
+		var w: float = _bias_weight(name, d, kind)
+		if w <= 0.0:
+			continue
+		names.append(name)
+		weights.append(w)
+	if names.is_empty():
+		return ""
+	return _weighted_pick(names, weights)
+
+func _bias_weight(name: String, d: Dictionary, kind: String) -> float:
+	var w: float = float(d.get("weight", 1.0))
+	var ranged: bool = kind == "projectile"
+	var meleeish: bool = kind == "melee" or kind == "slam" or kind == "leap_slam"
+	if sig_at_range:
+		if ranged: w *= 2.0
+		elif meleeish: w *= 0.5
+	if sig_aggressive and meleeish:
+		w *= 1.8
+	if sig_losing_badly:
+		w *= 2.2 if ranged else 0.2
+	if sig_repeating and kind == _last_attack_kind:
+		w *= 0.3
+	if name == current_attack_name:
+		w *= 0.5  # avoid back-to-back identical picks (combos chain explicitly)
+	return maxf(w, 0.0)
+
+func _weighted_pick(names: Array[String], weights: Array[float]) -> String:
+	var total: float = 0.0
+	for w in weights:
+		total += w
+	if total <= 0.0:
+		return names[0]
+	var r: float = rng.randf() * total
+	for i in names.size():
+		r -= weights[i]
+		if r <= 0.0:
+			return names[i]
+	return names[names.size() - 1]
+
+# -----------------------------------------------------------------------------
+# Attack executor — every move runs through WINDUP → ACTIVE → RECOVERY here.
+# -----------------------------------------------------------------------------
+func _start_attack(name: String) -> void:
+	current_attack_name = name
+	current_attack = ATTACKS.get(name, {})
+	_last_attack_kind = String(current_attack.get("kind", ""))
+	atk_phase = AtkPhase.WINDUP
+	atk_phase_t = 0.0
+	_atk_active_inited = false
+	_melee_hit_this_swing = false
+	_slam_hit_this_charge = false
+	_did_leap_launch = false
+	_did_shockwave = false
+	damage_taken_mult = 1.0
+	_face_player()
+	slam_dir = direction
+	_enter_state(State.ATTACK)
+
+func _run_attack(delta: float) -> void:
+	# Combo gap: a short readable pause between chained attacks.
+	if current_attack_name == "__gap__":
+		atk_phase_t += delta
+		velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+		_pose_weight = move_toward(_pose_weight, 0.0, delta * 3.0)
+		_face_player()
+		if atk_phase_t >= _gap_time:
+			var nm: String = _combo_next_name
+			_combo_next_name = ""
+			_start_attack(nm)
+		return
+
+	atk_phase_t += delta
+	var d: Dictionary = current_attack
+	var kind: String = String(d.get("kind", "projectile"))
+
+	match atk_phase:
+		AtkPhase.WINDUP:
+			var w: float = float(d.get("windup", 0.4))
+			# Track the player for the first 60% of the windup, then lock — a
+			# late juke can bait a committed attack the wrong way.
+			if atk_phase_t < w * 0.6:
+				_face_player()
+				slam_dir = direction
+			velocity.x = move_toward(velocity.x, 0.0, 1100.0 * delta)
+			_apply_telegraph(String(d.get("telegraph", "")), clampf(atk_phase_t / maxf(w, 0.001), 0.0, 1.0))
+			if atk_phase_t >= w:
+				atk_phase = AtkPhase.ACTIVE
+				atk_phase_t = 0.0
+				_atk_active_inited = false
+		AtkPhase.ACTIVE:
+			_attack_active(delta, d, kind)
+			var dur: float = float(d.get("active", 0.15))
+			var done: bool = false
+			match kind:
+				"projectile":
+					done = _volley_remaining <= 0
+				"slam":
+					done = atk_phase_t >= dur or _slam_resolve()
+				"leap", "leap_slam":
+					done = is_on_floor() and atk_phase_t >= 0.15
+				_:
+					done = atk_phase_t >= dur
+			if done:
+				_attack_end_active(kind)
+				atk_phase = AtkPhase.RECOVERY
+				atk_phase_t = 0.0
+		AtkPhase.RECOVERY:
+			velocity.x = move_toward(velocity.x, 0.0, 700.0 * delta)
+			damage_taken_mult = float(d.get("recovery_vuln", 1.5))
+			_pose_weight = move_toward(_pose_weight, 0.0, delta / maxf(float(d.get("recovery", 0.4)), 0.001))
+			if atk_phase_t >= float(d.get("recovery", 0.4)):
+				_finish_attack(d)
+
+func _attack_active(delta: float, d: Dictionary, kind: String) -> void:
+	match kind:
+		"projectile":
+			if not _atk_active_inited:
+				_atk_active_inited = true
+				_begin_volley(d)
+				_apply_strike(String(d.get("telegraph", "")))
+			_tick_volley(delta, d)
+		"melee":
+			if not _atk_active_inited:
+				_atk_active_inited = true
+				_enable_melee(d)
+			velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
+		"slam":
+			if not _atk_active_inited:
+				_atk_active_inited = true
+				if _slam_hitbox_shape:
+					_slam_hitbox_shape.set_deferred("disabled", false)
+				_apply_strike(String(d.get("telegraph", "")))
+			velocity.x = float(slam_dir) * slam_speed * float(d.get("speed_mult", 1.0))
+		"leap":
+			if not _did_leap_launch:
+				_did_leap_launch = true
+				_launch_leap()
+			var ld: float = signf(velocity.x)
+			if ld == 0.0:
+				ld = float(direction)
+			velocity.x = ld * leap_vx
+		"leap_slam":
+			if not _did_leap_launch:
+				_did_leap_launch = true
+				_launch_leap()
+			if is_on_floor() and atk_phase_t > 0.12 and not _did_shockwave:
+				_did_shockwave = true
+				_spawn_shockwave(d)
+
+func _attack_end_active(kind: String) -> void:
+	if _slam_hitbox_shape:
+		_slam_hitbox_shape.set_deferred("disabled", true)
+	if _melee_hitbox_shape:
+		_melee_hitbox_shape.set_deferred("disabled", true)
+	if kind == "slam":
+		# Body-brake kick so the stop reads as weight.
+		velocity.x = float(-slam_dir) * 120.0
+
+func _finish_attack(d: Dictionary) -> void:
+	damage_taken_mult = 1.0
+	var kind: String = String(d.get("kind", ""))
+	# Per-kind gates reset when the move (or its whole combo) resolves.
+	if kind == "slam":
+		slam_cd = rng.randf_range(2.6, 4.5) * (0.55 if is_enraged else 1.0)
+	elif kind == "leap" or kind == "leap_slam":
+		leap_cd = rng.randf_range(2.4, 4.2)
+	# Combo chain?
+	var nexts: Array = d.get("combo_next", [])
+	var chance: float = float(d.get("combo_chance", 0.0))
+	if combo_depth < COMBO_DEPTH_MAX and not nexts.is_empty() and rng.randf() < chance:
+		var pick: String = _pick_combo(nexts)
+		if pick != "":
+			combo_depth += 1
+			_combo_next_name = pick
+			_gap_time = float(d.get("combo_delay", 0.2))
+			current_attack_name = "__gap__"
+			atk_phase = AtkPhase.WINDUP
+			atk_phase_t = 0.0
+			return
+	combo_depth = 0
+	_post_attack()
+
+func _pick_combo(nexts: Array) -> String:
+	var valid: Array[String] = []
+	for n in nexts:
+		var d: Dictionary = ATTACKS.get(String(n), {})
+		if d.is_empty():
+			continue
+		if int(d.get("phase_min", 1)) > phase:
+			continue
+		valid.append(String(n))
+	if valid.is_empty():
+		return ""
+	return valid[rng.randi() % valid.size()]
+
+# --- Projectile volleys ------------------------------------------------------
+func _begin_volley(d: Dictionary) -> void:
+	var lo: int = int(d.get("volley_min", 1))
+	var hi: int = maxi(lo, int(d.get("volley_max", 1)))
+	_volley_total = rng.randi_range(lo, hi)
+	if is_enraged:
+		_volley_total += 1  # later phases throw a touch more
+	_volley_remaining = _volley_total
+	_volley_period = float(d.get("active", 0.15)) / float(maxi(_volley_total, 1))
+	_volley_delay = 0.0
+
+func _tick_volley(delta: float, d: Dictionary) -> void:
+	_volley_delay -= delta
+	if _volley_delay <= 0.0 and _volley_remaining > 0:
+		var idx: int = _volley_total - _volley_remaining
+		_spawn_attack_flame(d, idx)
+		_volley_remaining -= 1
+		_volley_delay = _volley_period
+
+func _spawn_attack_flame(d: Dictionary, idx: int) -> void:
+	var spread: String = String(d.get("spread", "line"))
+	var amp: float = float(d.get("spread_amp", 0.0))
+	match spread:
+		"fan":
+			var n: int = maxi(_volley_total - 1, 1)
+			_spawn_flame(lerpf(-amp, amp, float(idx) / float(n)))
+		"nova":
+			_spawn_nova_flame(idx)
+		_:
+			_spawn_flame(rng.randf_range(-amp, amp))
+
+func _spawn_nova_flame(idx: int) -> void:
+	# Radial burst — fan flames across a spread of angles around horizontal.
+	var n: int = maxi(_volley_total - 1, 1)
+	var ang: float = lerpf(-0.7, 0.7, float(idx) / float(n))
+	var speed: float = rng.randf_range(95.0, 130.0)
+	var vel: Vector2 = Vector2(float(direction), 0.0).rotated(ang) * speed
+	var spawn: Vector2 = Vector2(global_position.x + float(direction) * 40.0 * size_mult, arena_floor - 60.0 * size_mult)
+	_emit_flame(vel, spawn)
+
+# --- Melee -------------------------------------------------------------------
+func _enable_melee(d: Dictionary) -> void:
+	var w: float = float(d.get("hit_w", 70.0)) * size_mult
+	var h: float = float(d.get("hit_h", 60.0)) * size_mult
+	var off: float = float(d.get("hit_off", 40.0)) * size_mult
+	var rect := _melee_hitbox_shape.shape as RectangleShape2D
+	rect.size = Vector2(w, h)
+	# Mirror by `direction` — independent of the visual-root flip.
+	_melee_hitbox_shape.position = Vector2(float(direction) * off, -60.0 * size_mult)
+	_melee_hit_this_swing = false
+	_melee_hitbox_shape.set_deferred("disabled", false)
+	_apply_strike(String(d.get("telegraph", "")))
+
+func _on_melee_body_entered(body: Node) -> void:
+	if _melee_hit_this_swing:
+		return
+	if state != State.ATTACK or atk_phase != AtkPhase.ACTIVE:
+		return
+	if not (body.has_method("take_damage") or body.has_method("request_damage")):
+		return
+	_melee_hit_this_swing = true
+	_deal(body, int(current_attack.get("damage", contact_damage)))
+
+# --- Leaps + shockwave -------------------------------------------------------
+func _launch_leap() -> void:
+	_pick_pace_target()
+	var ld: float = signf(pace_target_x - global_position.x)
+	if ld == 0.0:
+		ld = float(direction)
+	direction = -1 if ld < 0.0 else 1
+	velocity = Vector2(ld * leap_vx, leap_vy)
+
+func _spawn_shockwave(d: Dictionary) -> void:
+	# Ground-skimming flames blast outward both ways on landing.
+	var count: int = int(d.get("shock_count", 3))
+	for s in [-1, 1]:
+		for i in count:
+			var spd: float = 120.0 + float(i) * 40.0
+			var spawn: Vector2 = Vector2(global_position.x + float(s) * 40.0 * size_mult, arena_floor - 22.0)
+			_emit_flame(Vector2(float(s) * spd, 0.0), spawn)
+	if player and player.has_method("_apply_shake"):
+		player.call("_apply_shake", 7.0)
+	var fx := EXPLOSIVE_EFFECT_SCENE.instantiate() as Node2D
+	get_parent().add_child(fx)
+	fx.global_position = global_position
+
+func _slam_resolve() -> bool:
+	var hit_wall: bool = is_on_wall() or absf(velocity.x) < slam_speed * 0.4
+	var at_edge: bool = (slam_dir < 0 and global_position.x <= _combat_min_x() + 8.0) \
+		or (slam_dir > 0 and global_position.x >= arena_right - 44.0)
+	return hit_wall or at_edge
+
+# Routes damage through the player's owning peer in MP, direct in solo.
+func _deal(body: Node, dmg: int) -> void:
+	if body.has_method("request_damage") and multiplayer.has_multiplayer_peer():
+		body.request_damage.rpc_id(body.get_multiplayer_authority(), dmg, global_position)
+	elif body.has_method("take_damage"):
+		body.take_damage(dmg, global_position)
+
 func _enter_state(s: State) -> void:
 	state = s
 	state_timer = 0.0
-	# Slam hitbox is only ever live during SLAM_CHARGE — make every other
-	# state transition implicitly disable it so STAGGER / damage interrupts
-	# can't leave a stray hurtbox on the player.
-	if _slam_hitbox_shape and s != State.SLAM_CHARGE:
-		_slam_hitbox_shape.set_deferred("disabled", true)
+	# Hitboxes are only ever live inside an ATTACK's ACTIVE phase — any other
+	# transition kills them so a stagger/phase interrupt can't leave a stray
+	# hurtbox on the player.
+	if s != State.ATTACK:
+		if _slam_hitbox_shape:
+			_slam_hitbox_shape.set_deferred("disabled", true)
+		if _melee_hitbox_shape:
+			_melee_hitbox_shape.set_deferred("disabled", true)
 	match s:
 		State.IDLE:
-			_mouth_glow.modulate.a = 0.0
+			damage_taken_mult = 1.0
+			if _mouth_glow:
+				_mouth_glow.modulate.a = 0.0
 		State.PACE:
+			damage_taken_mult = 1.0
 			_pick_pace_target()
-			_mouth_glow.modulate.a = 0.0
-		State.ROAR:
-			pending_fire_delay = 0.0
-			_mouth_glow.modulate.a = 0.0
-		State.FIRE:
-			pass
-		State.BURST:
-			volley_delay = 0.0
-		State.LEAP:
-			_mouth_glow.modulate.a = 0.0
-		State.SLAM_WINDUP:
-			_mouth_glow.modulate.a = 0.0
-			_slam_hit_this_charge = false
-			if _slam_hitbox_shape:
-				_slam_hitbox_shape.set_deferred("disabled", true)
-		State.SLAM_CHARGE:
-			# Enable the contact hurtbox for the duration of the lunge.
-			if _slam_hitbox_shape:
-				_slam_hitbox_shape.set_deferred("disabled", false)
+			if _mouth_glow:
+				_mouth_glow.modulate.a = 0.0
 		_:
 			pass
-
-func _pick_next_action() -> void:
-	# High-mobility loop: by default the boss keeps pacing. Attack and leap
-	# fire on their own cooldowns from inside PACE, so this only needs to
-	# pick a new pace target and pass control back.
-	_enter_state(State.PACE)
 
 # -----------------------------------------------------------------------------
 # Adaptive brain — observes the player and sets the five behavioral signals.
@@ -1001,65 +1418,6 @@ func _player_on_floor() -> bool:
 		return (player as CharacterBody2D).is_on_floor()
 	return true
 
-func _begin_attack() -> void:
-	# Attack selection is signal-driven. Default rhythm is the old single-vs-
-	# burst coin flip; signals bias it toward what the player is failing to
-	# answer for.
-	var want_burst: bool = false
-	var want_slam: bool = false
-
-	if sig_at_range:
-		# Player is hanging back — wall them with a fat volley.
-		want_burst = true
-	if sig_aggressive and _slam_makes_sense() and slam_cd <= 0.4:
-		# Player is pressing in — punish with a slam instead of a flame.
-		want_slam = true
-	if sig_repeating and _last_attack_kind != "":
-		# Player has settled into one pattern AND we just used the same
-		# attack last time — swap the kind to break the rhythm.
-		if _last_attack_kind == "burst":
-			want_burst = false
-		elif _last_attack_kind == "slam":
-			want_slam = false
-		elif _last_attack_kind == "flame" and volley_size_max >= 2:
-			want_burst = true
-	if sig_losing_badly:
-		# Cagey: no slams while bleeding out, prefer ranged pressure.
-		want_slam = false
-		want_burst = true
-
-	if want_slam:
-		_last_attack_kind = "slam"
-		_begin_slam()
-		return
-
-	if want_burst and volley_size_max >= 2:
-		# Losing-badly bumps burst size by one for desperation pressure.
-		var hi: int = volley_size_max + (1 if sig_losing_badly else 0)
-		volley_remaining = rng.randi_range(2, hi)
-		_last_attack_kind = "burst"
-	elif rng.randf() < 0.55 and volley_size_max >= 2:
-		volley_remaining = rng.randi_range(2, volley_size_max)
-		_last_attack_kind = "burst"
-	else:
-		volley_remaining = 1
-		_last_attack_kind = "flame"
-	# Cooldown is set when the attack resolves, not here — keeps the
-	# next attack from chain-firing immediately after a long burst.
-	_enter_state(State.ROAR)
-
-func _begin_leap() -> void:
-	# Aim the leap horizontally toward a fresh pace target so it actually
-	# repositions the boss instead of jumping in place.
-	_pick_pace_target()
-	var leap_dir: float = signf(pace_target_x - global_position.x)
-	if leap_dir == 0.0:
-		leap_dir = float(direction)
-	direction = -1 if leap_dir < 0.0 else 1
-	velocity = Vector2(leap_dir * leap_vx, leap_vy)
-	leap_cd = rng.randf_range(2.4, 4.2)
-	_enter_state(State.LEAP)
-
 func _slam_makes_sense() -> bool:
 	# Only slam when the player is roughly in the boss's plane (so the lunge
 	# could actually connect) and at a useful distance — close enough to be
@@ -1072,42 +1430,19 @@ func _slam_makes_sense() -> bool:
 	var dx: float = absf(p.global_position.x - global_position.x)
 	return dx >= 80.0 and dx <= 520.0
 
-func _begin_slam() -> void:
-	# Face the player and commit. slam_dir is captured here so the windup
-	# locks direction visually; SLAM_WINDUP may re-aim once before the lunge.
-	if player is Node2D:
-		var dx: float = (player as Node2D).global_position.x - global_position.x
-		slam_dir = -1 if dx < 0.0 else 1
-	else:
-		slam_dir = direction
-	direction = slam_dir
-	_enter_state(State.SLAM_WINDUP)
-
-func _end_slam() -> void:
-	# Reset slam cooldown (longer than attack_cd — slams are committed reads,
-	# not constant pressure) and recover through a short stagger so the
-	# player gets a punish window on a well-dodged slam.
-	slam_cd = rng.randf_range(2.6, 4.5)
-	if is_enraged:
-		slam_cd *= 0.55
-	_enter_state(State.STAGGER)
-
 func _on_slam_body_entered(body: Node) -> void:
 	if _slam_hit_this_charge:
 		return
-	if state != State.SLAM_CHARGE:
+	if state != State.ATTACK or atk_phase != AtkPhase.ACTIVE:
 		return
 	if not (body.has_method("take_damage") or body.has_method("request_damage")):
 		return
 	_slam_hit_this_charge = true
-	if body.has_method("request_damage") and multiplayer.has_multiplayer_peer():
-		body.request_damage.rpc_id(body.get_multiplayer_authority(), slam_damage, global_position)
-	elif body.has_method("take_damage"):
-		body.take_damage(slam_damage, global_position)
+	_deal(body, int(current_attack.get("damage", slam_damage)))
 
 func _post_attack() -> void:
-	# Reset attack cooldown based on aggressiveness — more aggressive bosses
-	# come back online faster.
+	# Reset the attack beat — more aggressive bosses come back online faster.
+	combo_depth = 0
 	var base: float = lerpf(1.1, 0.45, clampf(aggressiveness, 0.0, 1.0))
 	attack_cd = base + rng.randf_range(-0.12, 0.18)
 	_enter_state(State.PACE)
@@ -1151,96 +1486,143 @@ func _face_player() -> void:
 # Combat
 # -----------------------------------------------------------------------------
 func _spawn_flame(height_offset: float) -> void:
+	# Horizontal spawn forward of the body; vertical in the "jumpable but
+	# threatening" band so a stationary player is hit and a normal jump clears
+	# it. height_offset shifts it lower (higher jump) or higher (duck/skip).
+	var fwd_x: float = float(direction) * 56.0 * size_mult
+	var fy: float = clampf(arena_floor - 28.0 + height_offset, arena_floor - 56.0, arena_floor - 18.0)
+	var speed: float = rng.randf_range(85.0, 115.0)
+	_emit_flame(Vector2(float(direction) * speed, 0.0), Vector2(global_position.x + fwd_x, fy))
+
+func _emit_flame(vel: Vector2, spawn: Vector2) -> void:
 	var flame := Area2D.new()
 	flame.set_script(FLAME_SCRIPT)
-	# Horizontal spawn: a bit forward of the boss's body in its facing
-	# direction, clearing the chest plates.
-	var fwd_x: float = float(direction) * 56.0 * size_mult
-	# Vertical spawn: at standing-player chest height (floor - 28), so a
-	# stationary player is hit and a normal jump clears it. height_offset
-	# jitter can push it lower (forcing a higher jump) or higher (duck/skip).
-	# Clamp so flames always sit in the "jumpable but threatening" band —
-	# never sunk into the floor, never sailing harmlessly overhead.
-	var fy: float = clampf(arena_floor - 28.0 + height_offset, arena_floor - 56.0, arena_floor - 18.0)
-	var spawn := Vector2(global_position.x + fwd_x, fy)
 	get_parent().add_child(flame)
 	flame.global_position = spawn
-	# Slow horizontal velocity in the boss's facing direction.
-	var speed: float = rng.randf_range(85.0, 115.0)
-	flame.setup(Vector2(float(direction) * speed, 0.0), arena_left, arena_right)
-	# Mouth flash on every spawn — short visual "spit".
-	if _mouth_glow:
-		_mouth_glow.modulate.a = 1.0
-		get_tree().create_timer(0.10).timeout.connect(func() -> void:
-			if is_instance_valid(_mouth_glow):
-				_mouth_glow.modulate.a = 0.0
-		)
+	flame.setup(vel, arena_left, arena_right)
+	_flash_mouth()
+
+func _flash_mouth() -> void:
+	# Short visual "spit" each time a flame leaves the mouth.
+	if _mouth_glow == null:
+		return
+	_mouth_glow.modulate.a = 1.0
+	get_tree().create_timer(0.10).timeout.connect(func() -> void:
+		if is_instance_valid(_mouth_glow):
+			_mouth_glow.modulate.a = 0.0
+	)
 
 func take_damage(amount: int, source_pos: Vector2) -> void:
 	if is_dead:
 		return
-	current_health -= amount
+	# Phase-change i-frames: flash but ignore damage + posture.
+	if _phase_invuln:
+		_hurt_flash = 0.08
+		return
+	# Punish multiplier: full damage during recovery (recovery_vuln) and a big
+	# multiplier while staggered (stagger_vuln) — set by the executor / stagger.
+	var dealt: int = maxi(int(round(float(amount) * damage_taken_mult)), 1)
+	current_health -= dealt
 	_hurt_flash = 0.12
-	# Feed the brain: each hit is direct evidence of aggression. Scaled by
-	# damage so a single big hit registers more than ambient chip damage.
+	# Feed the brain: each hit is direct evidence of aggression.
 	_aggro_score += 0.5 + float(amount) * 0.15
 	# Small knockback against the hit direction — doesn't break arena lock.
 	var kb: float = signf(global_position.x - source_pos.x) * 30.0
 	velocity.x += kb
-	# Slam and leap are full-commit windows: take the damage, but the boss
-	# doesn't break out of them. Same for the established attack states.
-	var committed: bool = state == State.ROAR or state == State.FIRE \
-		or state == State.BURST or state == State.SLAM_WINDUP \
-		or state == State.SLAM_CHARGE or state == State.LEAP
-	if not committed:
-		_enter_state(State.STAGGER)
+	# Posture build: base per damage, with a bonus for catching the boss in a
+	# windup or recovery (a true read) so punishing reads breaks it faster.
+	# Light hits no longer auto-stagger — only a full posture bar does.
+	if state != State.STAGGER:
+		var pg: float = float(amount) * 6.0
+		if state == State.ATTACK and atk_phase != AtkPhase.ACTIVE:
+			pg *= 1.8
+		posture += pg
+		_posture_decay_t = posture_decay_delay
+		if posture >= posture_max:
+			_enter_stagger()
 	_refresh_hp_bar()
-	_check_enrage()
+	_refresh_posture_bar()
+	_check_phase()
 	if current_health <= 0:
 		_die()
 
-func _check_enrage() -> void:
-	if is_enraged or is_dead:
+func _update_posture(delta: float) -> void:
+	if state == State.STAGGER or _phase_invuln or is_dead:
 		return
-	if float(current_health) > float(max_health) * enrage_threshold:
-		return
-	_trigger_enrage()
+	if _posture_decay_t > 0.0:
+		_posture_decay_t -= delta
+	elif posture > 0.0:
+		posture = maxf(posture - posture_regen * delta, 0.0)
+		_refresh_posture_bar()
 
-func _trigger_enrage() -> void:
-	is_enraged = true
-	# Compress cooldowns + speed across the board. The boss already attacks
-	# while pacing, so multiplying speed + halving cooldowns ratchets the
-	# pressure without changing the moveset.
-	pace_speed *= 1.35
-	slam_speed *= 1.20
-	leap_vx    *= 1.15
-	leap_vy    *= 1.10
-	slam_windup_time = maxf(0.25, slam_windup_time * 0.65)
-	aggressiveness = clampf(aggressiveness + 0.20, 0.0, 1.0)
-	volley_size_max = mini(volley_size_max + 2, 7)
-	burst_period   = maxf(0.08, burst_period * 0.70)
-	idle_time_min  *= 0.50
-	idle_time_max  *= 0.50
-	# Cut current cooldowns so the enrage hits with an immediate pressure
-	# spike instead of a quiet beat.
-	attack_cd = minf(attack_cd, 0.15)
-	slam_cd   = minf(slam_cd,   1.0)
-	leap_cd   = minf(leap_cd,   0.8)
-	# Visual telegraph: brief mouth flash and a sustained red aura. Spike +
-	# eye colors also shift toward hot red so the player reads the phase.
-	spike_color = spike_color.lerp(Color(1.0, 0.30, 0.10), 0.65)
-	eye_color   = Color(1.0, 0.30, 0.20)
+func _enter_stagger() -> void:
+	posture = 0.0
+	combo_depth = 0
+	damage_taken_mult = stagger_vuln
+	if _slam_hitbox_shape:
+		_slam_hitbox_shape.set_deferred("disabled", true)
+	if _melee_hitbox_shape:
+		_melee_hitbox_shape.set_deferred("disabled", true)
+	# Slumped break pose.
+	_pose_weight = 1.0
+	_pose_body_rot = 0.40
+	_pose_body_y = 14.0
+	_pose_scale_y = 0.82
+	_pose_head_rot = 0.50
+	if _mouth_glow:
+		_mouth_glow.modulate.a = 0.0
+	if player and player.has_method("_apply_shake"):
+		player.call("_apply_shake", 5.0)
+	_refresh_posture_bar()
+	_enter_state(State.STAGGER)
+
+func _check_phase() -> void:
+	if is_dead or _phase_invuln:
+		return
+	if phase > PHASE_THRESHOLDS.size():
+		return  # already final phase
+	var frac: float = float(current_health) / float(max_health)
+	if frac <= PHASE_THRESHOLDS[phase - 1]:
+		_enter_phase_transition(phase + 1)
+
+# Phase advance: brief invuln beat, stat ramp, palette shift, FX cascade, and
+# new attacks unlock via ATTACKS[*].phase_min. Replaces the old single enrage.
+func _enter_phase_transition(n: int) -> void:
+	phase = n
+	is_enraged = phase >= 2
+	_phase_invuln = true
+	damage_taken_mult = 0.0
+	combo_depth = 0
+	# Interrupt whatever was happening.
+	if _slam_hitbox_shape:
+		_slam_hitbox_shape.set_deferred("disabled", true)
+	if _melee_hitbox_shape:
+		_melee_hitbox_shape.set_deferred("disabled", true)
+	# Stat ramp per phase — compounds across phase 2 and 3.
+	pace_speed *= 1.18
+	slam_speed *= 1.12
+	leap_vx    *= 1.08
+	leap_vy    *= 1.06
+	aggressiveness = clampf(aggressiveness + 0.12, 0.0, 1.0)
+	posture_max *= 1.10  # harder to stagger as the fight escalates
+	idle_time_min *= 0.6
+	idle_time_max *= 0.6
+	# Cut current gates so the new phase opens with pressure.
+	attack_cd = minf(attack_cd, 0.2)
+	slam_cd   = minf(slam_cd, 1.0)
+	leap_cd   = minf(leap_cd, 0.8)
+	# Palette shift hotter; spikes + eyes glow toward red.
+	spike_color = spike_color.lerp(Color(1.0, 0.30, 0.10), 0.40)
+	eye_color   = eye_color.lerp(Color(1.0, 0.30, 0.20), 0.50)
 	for s in _spikes:
 		s.color = spike_color
 	if _mouth_glow:
 		_mouth_glow.modulate.a = 1.0
-	# Knockback shockwave on the player so the phase shift feels physical.
 	if player and player.has_method("_apply_shake"):
-		player.call("_apply_shake", 8.0)
-	# Cascade of small explosions across the body for a "shedding skin"
-	# enrage moment.
-	for i in 3:
-		var delay: float = float(i) * 0.10
+		player.call("_apply_shake", 9.0)
+	# Shedding-skin explosion cascade.
+	for i in 4:
+		var delay: float = float(i) * 0.09
 		get_tree().create_timer(delay).timeout.connect(func() -> void:
 			if not is_instance_valid(self) or is_dead:
 				return
@@ -1250,6 +1632,17 @@ func _trigger_enrage() -> void:
 				rng.randf_range(-40.0, 40.0) * size_mult,
 				rng.randf_range(-100.0, -10.0) * size_mult)
 		)
+	_enter_state(State.PHASE_TRANSITION)
+
+func _refresh_posture_bar() -> void:
+	if _posture_bar_fill == null:
+		return
+	var w: float = 120.0 * size_mult
+	var t: float = clampf(posture / maxf(posture_max, 1.0), 0.0, 1.0)
+	_posture_bar_fill.offset_left = -w * 0.5
+	_posture_bar_fill.offset_right = -w * 0.5 + w * t
+	# Brighten toward white as it nears a break.
+	_posture_bar_fill.color = Color(0.95, 0.80, 0.25).lerp(Color(1.0, 1.0, 0.85), t * t)
 
 func get_damage() -> int:
 	return contact_damage
@@ -1399,6 +1792,57 @@ func _spawn_explosion(local_offset: Vector2) -> void:
 # -----------------------------------------------------------------------------
 # Visuals (per-frame animation)
 # -----------------------------------------------------------------------------
+# Telegraph pose — the "loaded" windup silhouette. t ramps 0→1 across the
+# windup so the wind-back reads before the strike. Sets _pose_* targets that
+# _update_visuals blends in by _pose_weight.
+func _apply_telegraph(name: String, t: float) -> void:
+	_pose_weight = maxf(_pose_weight, t)
+	match name:
+		"head_rear":
+			_pose_head_rot = lerpf(0.0, -0.50, t)
+			_pose_body_rot = lerpf(0.0, -0.12, t)
+			if _mouth_glow:
+				_mouth_glow.modulate.a = t
+		"claw_raise":
+			_pose_arm_fore_rot = lerpf(0.0, -1.40, t)
+			_pose_body_rot = lerpf(0.0, -0.10, t)
+			_pose_body_y = lerpf(0.0, -3.0, t)
+		"tail_coil":
+			_pose_tail_rot = lerpf(0.0, 0.90, t)
+			_pose_body_rot = lerpf(0.0, 0.10, t)
+		"rear_back":
+			_pose_body_rot = lerpf(0.0, -0.22, t)
+			_pose_body_y = lerpf(0.0, -6.0, t)
+			_pose_scale_y = lerpf(1.0, 1.05, t)
+		"crouch_load":
+			_pose_scale_y = lerpf(1.0, 0.80, t)
+			_pose_body_y = lerpf(0.0, 8.0, t)
+		_:
+			pass
+
+# Strike pose — the forward release, snapped on at the start of ACTIVE so the
+# attack visibly commits. Recovery then decays _pose_weight back to neutral.
+func _apply_strike(name: String) -> void:
+	_pose_weight = 1.0
+	match name:
+		"head_rear":
+			_pose_head_rot = 0.25
+		"claw_raise":
+			_pose_arm_fore_rot = 1.20
+			_pose_body_rot = 0.18
+			_pose_body_y = 2.0
+		"tail_coil":
+			_pose_tail_rot = -1.10
+			_pose_body_rot = -0.08
+		"rear_back":
+			_pose_body_rot = 0.22
+			_pose_body_y = 2.0
+			_pose_scale_y = 0.98
+		"crouch_load":
+			_pose_scale_y = 1.0
+		_:
+			pass
+
 func _update_visuals(delta: float) -> void:
 	bob_phase += delta * 2.6
 	tail_phase += delta * 3.2
@@ -1410,42 +1854,54 @@ func _update_visuals(delta: float) -> void:
 		_animate_death(delta)
 		return
 
-	# Whole-body facing flip — sprite is built facing LEFT by default so flip
-	# the visual horizontally when direction > 0.
-	_visual_root.scale.x = -1.0 if direction > 0 else 1.0
+	# Outside an attack/stagger, settle the telegraph pose back to neutral so
+	# no swing leaves the rig stuck in a wound-up silhouette.
+	if state != State.ATTACK and state != State.STAGGER:
+		_pose_weight = move_toward(_pose_weight, 0.0, delta * 4.0)
+	var w: float = clampf(_pose_weight, 0.0, 1.0)
 
-	# Idle breathing — subtle vertical bob, plus shoulder lift via arm offset.
+	# Whole-body facing flip — rig is built facing LEFT, so flip x when
+	# direction > 0. Pose scale_y is folded into the same scale set.
+	var flip_x: float = -1.0 if direction > 0 else 1.0
+	_visual_root.scale = Vector2(flip_x, lerpf(1.0, _pose_scale_y, w))
+
+	# Body: blend idle breathing against the pose's body lean/lift.
 	var breath: float = sin(bob_phase) * 2.2
-	_visual_root.position.y = breath
-	if _arm_back:
-		_arm_back.rotation = sin(bob_phase) * 0.05
-	if _arm_fore:
-		_arm_fore.rotation = sin(bob_phase + PI) * 0.07
+	_visual_root.rotation = lerpf(0.0, _pose_body_rot, w)
+	_visual_root.position.y = lerpf(breath, _pose_body_y, w)
 
-	# Tail sway — each segment lags slightly behind the previous for a
-	# whip-like motion.
+	# Head tilt (rear for spit telegraph / slumped stagger).
+	if _head_root:
+		_head_root.rotation = lerpf(0.0, _pose_head_rot, w)
+
+	# Arms: idle shoulder sway blended toward the pose's claw rotation.
+	if _arm_back:
+		_arm_back.rotation = lerpf(sin(bob_phase) * 0.05, _pose_arm_back_rot, w)
+	if _arm_fore:
+		_arm_fore.rotation = lerpf(sin(bob_phase + PI) * 0.07, _pose_arm_fore_rot, w)
+
+	# Tail: whip sway, damped while a pose is active, plus a coil offset on the
+	# whole tail root for the tail-sweep telegraph/strike.
+	if _tail_root:
+		_tail_root.rotation = lerpf(0.0, _pose_tail_rot, w)
 	for i in _tail_segments.size():
 		var lag: float = float(i) * 0.35
-		_tail_segments[i].rotation = sin(tail_phase - lag) * 0.10
+		_tail_segments[i].rotation = sin(tail_phase - lag) * 0.10 * (1.0 - w * 0.7)
 
-	# --- Skeletal wings: visible during LEAP, flap like a gargoyle -------
-	if state == State.LEAP:
-		# Snap on instantly — wings unfurl at takeoff for drama.
+	# --- Skeletal wings: visible while airborne in a leap attack ---------
+	var leaping: bool = state == State.ATTACK \
+		and String(current_attack.get("kind", "")) in ["leap", "leap_slam"]
+	if leaping:
 		_wings_alpha = 1.0
 		_wing_phase += delta * 11.0
 	else:
 		_wings_alpha = move_toward(_wings_alpha, 0.0, 5.0 * delta)
-		# Slow the flap as we exit so the last beat reads as a glide,
-		# not an abrupt freeze.
 		_wing_phase += delta * lerpf(2.0, 11.0, _wings_alpha)
 	if _wing_left:
 		_wing_left.modulate.a = _wings_alpha
 	if _wing_right:
 		_wing_right.modulate.a = _wings_alpha
-	# Gargoyle-style asymmetric flap: ~30% of the cycle is a snappy
-	# down-stroke (powerful thrust), 70% is a slow recovery lift. The
-	# asymmetry sells the "heavy creature beating air down" feel that
-	# Disney's Gargoyles built its wing animation around.
+	# Gargoyle-style asymmetric flap: snappy down-stroke, slow recovery lift.
 	var cycle: float = fposmod(_wing_phase, TAU) / TAU
 	var flap_angle: float
 	if cycle < 0.30:
@@ -1455,7 +1911,6 @@ func _update_visuals(delta: float) -> void:
 	if _wing_left:
 		_wing_left.rotation = flap_angle
 	if _wing_right:
-		# Mirror so the two wings sweep down together in world space.
 		_wing_right.rotation = -flap_angle
 
 	# Walk cycle — alternate leg lift while pacing.
@@ -1467,22 +1922,27 @@ func _update_visuals(delta: float) -> void:
 		_left_leg.position.y  = move_toward(_left_leg.position.y,  0.0, 60.0 * delta)
 		_right_leg.position.y = move_toward(_right_leg.position.y, 0.0, 60.0 * delta)
 
-	# Eye pulse — brighter during roar/burst to telegraph attacks.
+	# Eye pulse — brighter while attacking (windup telegraph) or staggered.
 	var base_eye: float = 0.6 + 0.4 * sin(eye_phase)
-	var alert: float = 1.0 if state in [State.ROAR, State.FIRE, State.BURST] else 0.35
-	_eye_glow.modulate = eye_color.lightened(0.2) * (base_eye * 0.6 + alert)
+	var alert: float = 1.0 if (state == State.ATTACK or state == State.PHASE_TRANSITION) else 0.35
+	var eye_mod: Color = eye_color.lightened(0.2) * (base_eye * 0.6 + alert)
+	eye_mod.a = clampf(eye_mod.a, 0.0, 1.0)
+	if _eye_glow:
+		_eye_glow.modulate = eye_mod
 
-	# Enrage aura — slow pulse at moderate alpha when enraged, off otherwise.
+	# Enrage aura — intensity scales with phase (off in phase 1).
 	if _enrage_aura:
-		if is_enraged:
+		if phase >= 2:
 			var pulse: float = 0.5 + 0.5 * sin(bob_phase * 2.4)
-			_enrage_aura.color.a = 0.18 + 0.22 * pulse
+			var floor_a: float = 0.14 + 0.10 * float(phase - 1)
+			_enrage_aura.color.a = floor_a + 0.20 * pulse
 		else:
 			_enrage_aura.color.a = 0.0
 
-	# Hit flash overrides the base modulate; enraged base modulate is
-	# slightly hot-tinted so the kaiju reads as "lit up" even between hits.
-	if _hurt_flash > 0.0:
+	# Hit flash > phase-transition white-out > enraged hot tint > neutral.
+	if _phase_invuln:
+		_visual_root.modulate = Color(2.0, 1.6, 1.4)
+	elif _hurt_flash > 0.0:
 		_visual_root.modulate = Color(2.5, 2.5, 2.5)
 	elif is_enraged:
 		_visual_root.modulate = Color(1.18, 0.92, 0.88)
