@@ -1,6 +1,105 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://scripts/Enemy.gd" id="1_enemy"]
+[ext_resource type="Texture2D" uid="uid://dk4v8qm1eioqj" path="res://assets/sprites/greater_demon/idle_0.png" id="2_idle0"]
+[ext_resource type="Texture2D" uid="uid://sou7uub77rv7" path="res://assets/sprites/greater_demon/idle_1.png" id="3_idle1"]
+[ext_resource type="Texture2D" uid="uid://cj66rh8kdau8l" path="res://assets/sprites/greater_demon/idle_2.png" id="4_idle2"]
+[ext_resource type="Texture2D" uid="uid://7k3weq3aaehy" path="res://assets/sprites/greater_demon/idle_3.png" id="5_idle3"]
+[ext_resource type="Texture2D" uid="uid://uriar6snbkju" path="res://assets/sprites/greater_demon/walk_0.png" id="6_walk0"]
+[ext_resource type="Texture2D" uid="uid://cgaqxu0d3ifbm" path="res://assets/sprites/greater_demon/walk_1.png" id="7_walk1"]
+[ext_resource type="Texture2D" uid="uid://d0y3tv4ka2eln" path="res://assets/sprites/greater_demon/walk_2.png" id="8_walk2"]
+[ext_resource type="Texture2D" uid="uid://be6qw0ydv6on" path="res://assets/sprites/greater_demon/walk_3.png" id="9_walk3"]
+[ext_resource type="Texture2D" uid="uid://bwqp8rp2f06m" path="res://assets/sprites/greater_demon/walk_4.png" id="10_walk4"]
+[ext_resource type="Texture2D" uid="uid://dsk3o25rjwgjl" path="res://assets/sprites/greater_demon/walk_5.png" id="11_walk5"]
+[ext_resource type="Texture2D" uid="uid://cyk4274tuw63q" path="res://assets/sprites/greater_demon/hurt_0.png" id="12_hurt0"]
+[ext_resource type="Texture2D" uid="uid://cyteo6usrgeps" path="res://assets/sprites/greater_demon/hurt_1.png" id="13_hurt1"]
+[ext_resource type="Texture2D" uid="uid://cdqo6kk5vhdsw" path="res://assets/sprites/greater_demon/hurt_2.png" id="14_hurt2"]
+[ext_resource type="Texture2D" uid="uid://bj1t0xxxs2sfk" path="res://assets/sprites/greater_demon/die_0.png" id="15_die0"]
+[ext_resource type="Texture2D" uid="uid://dx3ev5vk08u2k" path="res://assets/sprites/greater_demon/die_1.png" id="16_die1"]
+[ext_resource type="Texture2D" uid="uid://doluqdpqsikt4" path="res://assets/sprites/greater_demon/die_2.png" id="17_die2"]
+[ext_resource type="Texture2D" uid="uid://cpo0g5x4jpikb" path="res://assets/sprites/greater_demon/die_3.png" id="18_die3"]
+[ext_resource type="Texture2D" uid="uid://e3g22egemdyf" path="res://assets/sprites/greater_demon/die_4.png" id="19_die4"]
+[ext_resource type="Texture2D" uid="uid://c34pcjqv0njqe" path="res://assets/sprites/greater_demon/die_5.png" id="20_die5"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_enemy"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("15_die0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_die1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_die2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_die3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("19_die4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("20_die5")
+}],
+"loop": false,
+"name": &"die",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("12_hurt0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_hurt1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_hurt2")
+}],
+"loop": false,
+"name": &"hurt",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_idle0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_idle1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_idle2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_idle3")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_walk0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_walk1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_walk2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_walk3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_walk4")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_walk5")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}]
 
 [sub_resource type="SceneReplicationConfig" id="ReplConfig_enemy"]
 properties/0/path = NodePath(".:position")
@@ -27,12 +126,13 @@ collision_layer = 4
 collision_mask = 1
 script = ExtResource("1_enemy")
 
-[node name="Sprite" type="ColorRect" parent="."]
-offset_left = -12.0
-offset_top = -12.0
-offset_right = 12.0
-offset_bottom = 12.0
-color = Color(0.9, 0.3, 0.3, 1)
+[node name="Sprite" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+scale = Vector2(0.3, 0.3)
+sprite_frames = SubResource("SpriteFrames_enemy")
+animation = &"idle"
+autoplay = "idle"
+speed_scale = 100.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_enemy")

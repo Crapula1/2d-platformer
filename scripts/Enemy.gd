@@ -15,9 +15,8 @@ var direction: int = 1
 var start_position: Vector2
 var is_dead: bool = false
 var stunned_timer: float = 0.0
-var _base_color: Color
 
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: AnimatedSprite2D = $Sprite
 @onready var wall_check: RayCast2D = $WallCheck
 @onready var floor_check: RayCast2D = $FloorCheck
 
@@ -30,8 +29,8 @@ func _ready() -> void:
 			speed *= RunState.enemy_speed_mult
 	current_health = max_health
 	start_position = global_position
-	_base_color = sprite.color
 	add_to_group("enemy")
+	_play(&"idle")
 
 func _physics_process(delta: float) -> void:
 	if not Net.is_solo() and not is_multiplayer_authority():
@@ -46,6 +45,7 @@ func _physics_process(delta: float) -> void:
 	if stunned_timer > 0:
 		stunned_timer -= delta
 		velocity.x = move_toward(velocity.x, 0, 400 * delta)
+		_play(&"idle")
 	else:
 		# Patrol logic
 		velocity.x = direction * speed
@@ -63,8 +63,9 @@ func _physics_process(delta: float) -> void:
 		elif is_on_floor() and not floor_check.is_colliding():
 			direction *= -1
 
-		# Update sprite facing
-		sprite.position.x = -2 * direction
+		# Update sprite facing. Art faces left at rest; flip_h when walking right.
+		sprite.flip_h = direction > 0
+		_play(&"walk")
 
 	if not is_on_floor():
 		velocity.y += gravity * delta
@@ -108,15 +109,17 @@ func _net_kill() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func net_flash() -> void:
-	sprite.color = Color.WHITE
+	# Tint white for a beat as a hit flash, then settle back to normal.
+	sprite.modulate = Color(3.0, 3.0, 3.0)
 	get_tree().create_timer(0.1).timeout.connect(func():
 		if is_instance_valid(self) and not is_dead:
-			sprite.color = _base_color
+			sprite.modulate = Color.WHITE
 	)
 
 func _die() -> void:
 	is_dead = true
-	sprite.color = Color(0.3, 0.3, 0.3)
+	sprite.modulate = Color(0.6, 0.6, 0.6)
+	_play(&"die")
 	$CollisionShape2D.set_deferred("disabled", true)
 	$Hurtbox/CollisionShape2D.set_deferred("disabled", true)
 	# Fall off screen
@@ -138,3 +141,10 @@ func _maybe_drop_health() -> void:
 		return
 	scene_root.add_child(pickup)
 	pickup.global_position = global_position
+
+func _play(anim: StringName) -> void:
+	# Death animation is terminal — never let patrol/idle clobber it.
+	if is_dead and anim != &"die":
+		return
+	if sprite.animation != anim:
+		sprite.play(anim)
