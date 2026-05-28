@@ -142,6 +142,13 @@ signal jetpack_changed(fuel: float, max: float)
 
 var score: int = 0
 
+# Character-scaled base stats, captured in _ready right after
+# _apply_character_stats. Run-wide upgrades (attack_bonus, speed_mult) layer
+# on top of these in RunState.apply_to_player so a character's attack/speed
+# tuning survives level transitions instead of being reset to marine defaults.
+var character_base_attack: int
+var character_base_speed: float
+
 const GRENADE_SCENE := preload("res://scenes/Grenade.tscn")
 const PLAYER_BULLET_SCENE := preload("res://scenes/PlayerBullet.tscn")
 const GRENADE_NAMES := ["Explosive", "Incendiary", "Electric"]
@@ -182,6 +189,9 @@ func _ready() -> void:
 		if RunState.player_max_hp_mult != 1.0:
 			max_health = maxi(int(round(float(max_health) * RunState.player_max_hp_mult)), 1)
 	current_health = max_health
+	# Snapshot the character-scaled base so run upgrades stack on top of it.
+	character_base_attack = attack_damage
+	character_base_speed = speed
 	jumps_remaining = max_jumps
 	attack_shape.disabled = true
 	crouch_shape.disabled = true

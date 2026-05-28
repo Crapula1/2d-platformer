@@ -189,8 +189,8 @@ func apply_to_player(player: Player) -> void:
 	player.score = saved_score
 	player.grenade_type = saved_grenade_type
 	player.grenade_count = saved_grenade_count
-	player.attack_damage = 2 + attack_bonus
-	player.speed = 180.0 * speed_mult
+	player.attack_damage = player.character_base_attack + attack_bonus
+	player.speed = player.character_base_speed * speed_mult
 	player.invincibility_time = 1.0 + invincibility_bonus
 	player.grenade_cooldown_base = 0.85 * grenade_cd_mult
 	player.health_changed.emit(player.current_health, player.max_health)
